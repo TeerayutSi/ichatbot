@@ -547,13 +547,13 @@ public class WorkingTimeProcessor : ILineMessageProcessor
         // Prepare data for HR System API
         var hrSystemRequest = new HrSystemCheckInCheckOutRequest
         {
-            EmployeeId = userId, // Using userId as EmployeeId (line-id)
+            EmployeeId = "840de364-0476-4d4d-85bc-0ca81b3c7b82", // Using userId as EmployeeId (line-id)
             LatLong = $"{session.SelectedOfficeLatitude ?? session.Latitude ?? 0},{session.SelectedOfficeLongitude ?? session.Longitude ?? 0}", // Latitude Longitude
             Location = session.SelectedOfficeName ?? "Unknown Location", // AgencyName
             IpAddress = "0.0.0.0", // IP address is not available in the session data
             CheckIn = DateTime.UtcNow, // timestamp (datetime)
-            OrganizationId = null, // is null
-            ProjectId = null, // is null
+            OrganizationId = "baec76f4-4884-45af-b77f-dc4b78965f09", // is guid
+            ProjectId = "21e447fd-3b58-4fd1-b596-7b7a0fe7d0b4", // is guid
             FileName = fileName, // generate picture file name
             Base64 = base64Photo // take a photo byte[] > base64
         };
@@ -562,6 +562,13 @@ public class WorkingTimeProcessor : ILineMessageProcessor
         {
             var httpClient = _httpClientFactory.CreateClient("resilient_nocompress");
             httpClient.DefaultRequestHeaders.Add("accept", "application/json");
+            
+            // Add Bearer token authentication
+            var bearerToken = _configuration["WorkingTime:HrSystemBearerToken"];
+            if (!string.IsNullOrEmpty(bearerToken))
+            {
+                httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+            }
 
             // Serialize data to JSON
             var json = JsonSerializer.Serialize(hrSystemRequest);
