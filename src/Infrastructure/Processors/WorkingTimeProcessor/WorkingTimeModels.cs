@@ -83,3 +83,16 @@ public class GooglePlaceLocation
     [JsonPropertyName("lng")]
     public double Longitude { get; set; }
 }
+
+public class HrSystemCheckInCheckOutRequest
+{
+    public string EmployeeId { get; set; }
+    public string LatLong { get; set; }
+    public string Location { get; set; }
+    public string IpAddress { get; set; }
+    public DateTime CheckIn { get; set; }
+    public string? OrganizationId { get; set; }
+    public string? ProjectId { get; set; }
+    public string FileName { get; set; }
+    public string Base64 { get; set; }
+}

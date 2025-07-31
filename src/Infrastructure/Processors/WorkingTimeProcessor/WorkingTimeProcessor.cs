@@ -1,3 +1,4 @@
+using System;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -523,24 +524,47 @@ public class WorkingTimeProcessor : ILineMessageProcessor
             return false;
         }
 
-        // Prepare data
-        var workingTimeData = new WorkingTimeData
+        // Convert photo to base64
+        var base64Photo = session.PhotoContent != null ? Convert.ToBase64String(session.PhotoContent) : string.Empty;
+        
+        // Determine file extension for the photo
+        var fileExtension = "jpg";
+        if (!string.IsNullOrEmpty(session.PhotoContentType))
         {
-            AgencyName = session.SelectedOfficeName ?? "Unknown",
-            Latitude = session.SelectedOfficeLatitude ?? session.Latitude ?? 0,
-            Longitude = session.SelectedOfficeLongitude ?? session.Longitude ?? 0,
-            Timestamp = DateTime.UtcNow,
-            ActionType = session.Type,
-            Photo = session.PhotoContent ?? Array.Empty<byte>(),
-            LineUserId = userId
+            // Map content type to file extension
+            fileExtension = session.PhotoContentType switch
+            {
+                "image/png" => "png",
+                "image/jpeg" => "jpg",
+                "image/jpg" => "jpg",
+                _ => "jpg"
+            };
+        }
+        
+        // Create file name with timestamp
+        var fileName = $"checkin_checkout_{DateTime.UtcNow:yyyyMMddHHmmss}.{fileExtension}";
+
+        // Prepare data for HR System API
+        var hrSystemRequest = new HrSystemCheckInCheckOutRequest
+        {
+            EmployeeId = userId, // Using userId as EmployeeId (line-id)
+            LatLong = $"{session.SelectedOfficeLatitude ?? session.Latitude ?? 0},{session.SelectedOfficeLongitude ?? session.Longitude ?? 0}", // Latitude Longitude
+            Location = session.SelectedOfficeName ?? "Unknown Location", // AgencyName
+            IpAddress = "0.0.0.0", // IP address is not available in the session data
+            CheckIn = DateTime.UtcNow, // timestamp (datetime)
+            OrganizationId = null, // is null
+            ProjectId = null, // is null
+            FileName = fileName, // generate picture file name
+            Base64 = base64Photo // take a photo byte[] > base64
         };
 
         try
         {
             var httpClient = _httpClientFactory.CreateClient("resilient_nocompress");
+            httpClient.DefaultRequestHeaders.Add("accept", "application/json");
 
             // Serialize data to JSON
-            var json = JsonSerializer.Serialize(workingTimeData);
+            var json = JsonSerializer.Serialize(hrSystemRequest);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
 
             // Send POST request
