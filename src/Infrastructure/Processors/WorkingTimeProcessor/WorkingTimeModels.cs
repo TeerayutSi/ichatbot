@@ -38,6 +38,7 @@ public class GovernmentOffice
     public string PlaceId { get; set; }
     public double Latitude { get; set; }
     public double Longitude { get; set; }
+    public string? Address { get; set; }
 }
 
 public class WorkingTimeData
@@ -67,6 +68,9 @@ public class GooglePlaceResult
 
     [JsonPropertyName("geometry")]
     public GooglePlaceGeometry Geometry { get; set; }
+
+    [JsonPropertyName("vicinity")]
+    public string? Vicinity { get; set; }
 }
 
 public class GooglePlaceGeometry
