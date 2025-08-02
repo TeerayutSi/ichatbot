@@ -550,19 +550,27 @@ public class WorkingTimeProcessor : ILineMessageProcessor
         try
         {
             // Try to find a user whose LineAccessToken matches the provided userId (LINE OA user ID)
+            // Using AsNoTracking for better performance since we only need to read data
             var user = await _context.Users
+                .AsNoTracking()
                 .Where(u => u.LineAccessToken == userId)
+                .Select(u => new { u.Id }) // Only select the Id to improve performance
                 .FirstOrDefaultAsync(cancellationToken);
             
             // If we found a user with a matching LineAccessToken, use their actual ID
             if (user != null)
             {
                 actualUserId = user.Id;
+                _logger.LogInformation("Mapped LINE OA user ID {LineUserId} to actual user ID {ActualUserId}", userId, actualUserId);
+            }
+            else
+            {
+                _logger.LogWarning("No user found with LineAccessToken matching LINE OA user ID {LineUserId}. Using LINE OA user ID as fallback.", userId);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error while trying to map LINE OA user ID to actual user ID. Using provided userId as fallback.");
+            _logger.LogWarning(ex, "Error while trying to map LINE OA user ID {LineUserId} to actual user ID. Using provided userId as fallback.", userId);
         }
 
         // Prepare data for HR System API
