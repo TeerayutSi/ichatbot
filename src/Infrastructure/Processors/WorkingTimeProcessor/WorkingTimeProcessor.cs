@@ -45,16 +45,27 @@ public class WorkingTimeProcessor : ILineMessageProcessor
     public async Task<LineReplyStatus> ProcessLineAsync(LineEvent evt, int chatbotId, string message, string userId,
         string replyToken, CancellationToken cancellationToken = default)
     {
+        Chatbot? chatbot = await _context.Chatbots
+            .FirstOrDefaultAsync(c => c.Id == chatbotId, cancellationToken);
+
+        if (chatbot == null || chatbot.LineChannelAccessToken == null)
+        {
+            _logger.LogError("Chatbot with ID {ChatbotId} not found", chatbotId);
+            return new LineReplyStatus { Status = 404 };
+        }
+
+        string accessToken = chatbot.LineChannelAccessToken;
+
         // Check if message is a check-in command
         if (IsCheckInCommand(message))
         {
-            return await HandleCheckInCommand(userId, replyToken, WorkingTimeType.CheckIn, cancellationToken);
+            return await HandleCheckInCommand(userId, replyToken, WorkingTimeType.CheckIn, accessToken, cancellationToken);
         }
 
         // Check if message is a check-out command
         if (IsCheckOutCommand(message))
         {
-            return await HandleCheckInCommand(userId, replyToken, WorkingTimeType.CheckOut, cancellationToken);
+            return await HandleCheckInCommand(userId, replyToken, WorkingTimeType.CheckOut, accessToken, cancellationToken);
         }
 
         // Check if message is postback from FLEX message (agency selection)
@@ -241,7 +252,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
         return checkOutCommands.Contains(message.ToLowerInvariant().Trim());
     }
 
-    private async Task<LineReplyStatus> HandleCheckInCommand(string userId, string replyToken, WorkingTimeType type, CancellationToken cancellationToken)
+    private async Task<LineReplyStatus> HandleCheckInCommand(string userId, string replyToken, WorkingTimeType type, string accessToken, CancellationToken cancellationToken)
     {
         // Create new session
         var session = new WorkingTimeSession
@@ -255,6 +266,10 @@ public class WorkingTimeProcessor : ILineMessageProcessor
         // Save session to cache
         await _cache.SetObjectAsync($"workingtime_session:{userId}", session, 30, false);
 
+        // Get user's display name
+        string? displayName = await GetLineProfileName(userId, accessToken, cancellationToken);
+        string greeting = !string.IsNullOrEmpty(displayName) ? $"👋 สวัสดีคุณ {displayName} " : "";
+
         // Request location from user
         return new LineReplyStatus
         {
@@ -264,7 +279,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                 ReplyToken = replyToken,
                 Messages = new List<LineMessage>
                 {
-                    new LineTextMessage($"กรุณาส่งตำแหน่งที่ตั้งของคุณเพื่อ{GetActionText(type)}")
+                    new LineTextMessage($"{greeting}กรุณาส่งตำแหน่งที่ตั้งของคุณเพื่อ{GetActionText(type)}")
                 }
             }
         };
@@ -623,6 +638,25 @@ public class WorkingTimeProcessor : ILineMessageProcessor
             _logger.LogError(ex, "Error submitting working time data to HR System API for user {UserId}", actualUserId);
             return false;
         }
+    }
+    private async Task<string?> GetLineProfileName(string userId, string accessToken, CancellationToken cancellationToken)
+    {
+        var client = _httpClientFactory.CreateClient("resilient_nocompress");
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", accessToken);
+
+        var url = $"https://api.line.me/v2/bot/profile/{userId}";
+        var lineResponse = await client.GetAsync(url, cancellationToken);
+
+        if (!lineResponse.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("Failed to get user profile: {StatusCode}", lineResponse.StatusCode);
+            return null;
+        }
+
+        var lineContent = await lineResponse.Content.ReadAsStringAsync(cancellationToken);
+        var json = JsonDocument.Parse(lineContent);
+        return json.RootElement.GetProperty("displayName").GetString() ?? string.Empty;
     }
 
     #endregion
