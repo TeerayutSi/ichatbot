@@ -161,10 +161,10 @@ public class WorkingTimeProcessor : ILineMessageProcessor
             var timestamp = DateTime.Now.ToString("dd MMMM yyyy HH:mm", thaiCulture);
 
             // Create multi-line success message
-            var successMessage = $"👤{displayName}: บันทึก{GetActionText(session.Type)}เรียบร้อยแล้ว\n" +
+            var successMessage = $"😀{displayName}: บันทึก{GetActionText(session.Type)}เรียบร้อยแล้ว\n" +
                                 $"📌{session.SelectedOfficeName ?? "Unknown Location"}\n" +
                                 $"🗺️{(session.SelectedOfficeLatitude.HasValue && session.SelectedOfficeLongitude.HasValue ? $"{session.SelectedOfficeLatitude:F6},{session.SelectedOfficeLongitude:F6}" : "Unknown Coordinates")}\n" +
-                                $"⌚{timestamp}";
+                                $"⏰{timestamp}";
 
             return new LineReplyStatus
             {
