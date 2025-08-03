@@ -95,7 +95,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                     ReplyToken = replyToken,
                     Messages = new List<LineMessage>
                     {
-                        new LineTextMessage("ไม่พบเซสชันการทำงาน กรุณาเริ่มใหม่ด้วยคำสั่งเช็คอินหรือเช็คเอาต์")
+                        new LineTextMessage("⚠️ไม่พบเซสชันการทำงาน กรุณาเริ่มใหม่ด้วยคำสั่งเช็คอินหรือเช็คเอาต์")
                     }
                 }
             };
@@ -130,7 +130,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                     ReplyToken = replyToken,
                     Messages = new List<LineMessage>
                     {
-                        new LineTextMessage("ไม่สามารถดาวน์โหลดรูปภาพได้ กรุณาลองใหม่อีกครั้ง")
+                        new LineTextMessage("⚠️ไม่สามารถดาวน์โหลดรูปภาพได้ กรุณาลองใหม่อีกครั้ง")
                     }
                 }
             };
@@ -161,9 +161,9 @@ public class WorkingTimeProcessor : ILineMessageProcessor
             var timestamp = DateTime.Now.ToString("dd MMMM yyyy HH:mm", thaiCulture);
 
             // Create multi-line success message
-            var successMessage = $"😀{displayName}: บันทึก{GetActionText(session.Type)}เรียบร้อยแล้ว\n" +
-                                $"📌{session.SelectedOfficeName ?? "Unknown Location"}\n" +
-                                $"🗺️{(session.SelectedOfficeLatitude.HasValue && session.SelectedOfficeLongitude.HasValue ? $"{session.SelectedOfficeLatitude:F6},{session.SelectedOfficeLongitude:F6}" : "Unknown Coordinates")}\n" +
+            var successMessage = $"😀{displayName}: บันทึก{GetActionText(session.Type)}✅\n" +
+                                $"🏢{session.SelectedOfficeName ?? "Unknown Location"}\n" +
+                                $"📌{(session.SelectedOfficeLatitude.HasValue && session.SelectedOfficeLongitude.HasValue ? $"{session.SelectedOfficeLatitude:F6},{session.SelectedOfficeLongitude:F6}" : "Unknown Coordinates")}\n" +
                                 $"⏰{timestamp}";
 
             return new LineReplyStatus
@@ -189,7 +189,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                     ReplyToken = replyToken,
                     Messages = new List<LineMessage>
                     {
-                        new LineTextMessage("ไม่สามารถบันทึกข้อมูลได้ กรุณาลองใหม่อีกครั้ง")
+                        new LineTextMessage("⚠️ไม่สามารถบันทึกข้อมูลได้ กรุณาลองใหม่อีกครั้ง")
                     }
                 }
             };
@@ -210,7 +210,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                     ReplyToken = replyToken,
                     Messages = new List<LineMessage>
                     {
-                        new LineTextMessage("ไม่พบเซสชันการทำงาน กรุณาเริ่มใหม่ด้วยคำสั่งเช็คอินหรือเช็คเอาต์")
+                        new LineTextMessage("⚠️ไม่พบเซสชันการทำงาน กรุณาเริ่มใหม่ด้วยคำสั่งเช็คอินหรือเช็คเอาต์")
                     }
                 }
             };
@@ -238,7 +238,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                     ReplyToken = replyToken,
                     Messages = new List<LineMessage>
                     {
-                        new LineTextMessage("ไม่พบหน่วยงานที่อยู่ใกล้เคียง กรุณาลองใหม่อีกครั้ง")
+                        new LineTextMessage("⚠️ไม่พบหน่วยงานที่อยู่ใกล้เคียง กรุณาลองใหม่อีกครั้ง")
                     }
                 }
             };
@@ -320,7 +320,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                     ReplyToken = replyToken,
                     Messages = new List<LineMessage>
                     {
-                        new LineTextMessage("ไม่พบเซสชันการทำงาน กรุณาเริ่มใหม่ด้วยคำสั่งเช็คอินหรือเช็คเอาต์")
+                        new LineTextMessage("⚠️ไม่พบเซสชันการทำงาน กรุณาเริ่มใหม่ด้วยคำสั่งเช็คอินหรือเช็คเอาต์")
                     }
                 }
             };
@@ -546,14 +546,14 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                         new
                         {
                             type = "text",
-                            text = office.Name,
+                            text = $"🏢{office.Name}",
                             weight = "bold",
                             size = "md"
                         },
                         new
                         {
                             type = "text",
-                            text = office.Address ?? $"Lat: {office.Latitude:F6}, Lng: {office.Longitude:F6}",
+                            text = $"📌{office.Address}" ?? $"Lat: {office.Latitude:F6}, Lng: {office.Longitude:F6}",
                             size = "sm",
                             color = "#666666",
                             wrap = true
@@ -634,7 +634,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                         action = new
                         {
                             type = "uri",
-                            label = "ส่งแชร์ตำแหน่ง",
+                            label = "ส่งแชร์ตำแหน่ง🗺️",
                             uri = "line://nv/location"
                         }
                     }
