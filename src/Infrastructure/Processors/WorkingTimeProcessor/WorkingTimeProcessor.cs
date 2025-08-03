@@ -270,6 +270,9 @@ public class WorkingTimeProcessor : ILineMessageProcessor
 
     private async Task<LineReplyStatus> HandleCheckInCommand(string userId, string replyToken, WorkingTimeType type, string accessToken, CancellationToken cancellationToken)
     {
+        // Log that we're handling the check-in command
+        _logger.LogInformation("Handling check-in command for user {UserId}, type {Type}", userId, type);
+        
         // Create new session
         var session = new WorkingTimeSession
         {
@@ -286,18 +289,15 @@ public class WorkingTimeProcessor : ILineMessageProcessor
         string? displayName = await GetLineProfileName(userId, accessToken, cancellationToken);
         string greeting = !string.IsNullOrEmpty(displayName) ? $"😀สวัสดีคุณ {displayName} " : "";
 
-        // Request location from user
+        // Create FLEX message with location request button
+        var flexMessage = CreateLocationRequestFlexMessage(greeting, type);
+        
+        _logger.LogInformation("Created flex message for user {UserId}: {FlexMessage}", userId, flexMessage);
+        
         return new LineReplyStatus
         {
-            Status = 200,
-            ReplyMessage = new LineReplyMessage
-            {
-                ReplyToken = replyToken,
-                Messages = new List<LineMessage>
-                {
-                    new LineTextMessage($"{greeting}กรุณาส่งตำแหน่งที่ตั้งของคุณเพื่อ{GetActionText(type)}")
-                }
-            }
+            Status = 201, // Special status for FLEX messages
+            Raw = flexMessage
         };
     }
 
@@ -593,6 +593,65 @@ public class WorkingTimeProcessor : ILineMessageProcessor
             Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
             WriteIndented = false
         });
+    }
+
+    private string CreateLocationRequestFlexMessage(string greeting, WorkingTimeType type)
+    {
+        // Create a properly formatted LINE Flex Message
+        var flexMessage = new
+        {
+            type = "bubble",
+            body = new
+            {
+                type = "box",
+                layout = "vertical",
+                contents = new object[]
+                {
+                    new
+                    {
+                        type = "text",
+                        text = $"{greeting}กรุณาแชร์ตำแหน่งที่ตั้งของคุณ แล้วระบบจะดึงสถานที่ใกล้เคียงให้เลือก เพื่อ{GetActionText(type)}",
+                        wrap = true,
+                        size = "md",
+                        color = "#333333"
+                    }
+                },
+                spacing = "md",
+                paddingAll = "20px"
+            },
+            footer = new
+            {
+                type = "box",
+                layout = "vertical",
+                spacing = "sm",
+                contents = new object[]
+                {
+                    new
+                    {
+                        type = "button",
+                        style = "primary",
+                        color = "#1DB446",
+                        action = new
+                        {
+                            type = "uri",
+                            label = "ส่งแชร์ตำแหน่ง",
+                            uri = "line://nv/location"
+                        }
+                    }
+                }
+            }
+        };
+
+        var json = JsonSerializer.Serialize(flexMessage, new JsonSerializerOptions
+        {
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            WriteIndented = false
+        });
+
+        // Log the JSON for debugging
+        _logger.LogInformation("Generated location request flex message JSON: {Json}", json);
+
+        return json;
     }
 
     private async Task<bool> SubmitToHrSystem(WorkingTimeSession session, string userId, CancellationToken cancellationToken)
