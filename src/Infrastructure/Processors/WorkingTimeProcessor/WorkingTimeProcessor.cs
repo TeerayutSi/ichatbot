@@ -364,7 +364,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                 ReplyToken = replyToken,
                 Messages = new List<LineMessage>
                 {
-                    new LineTextMessage("กรุณาถ่ายรูปเซลฟี่เพื่อยืนยันตัวตน")
+                    new LineTextMessage("📷ถ่ายรูปเซลฟี่เพื่อยืนยันตัวตน")
                 }
             }
         };
