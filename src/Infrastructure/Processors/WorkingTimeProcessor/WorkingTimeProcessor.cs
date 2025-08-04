@@ -610,7 +610,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                     new
                     {
                         type = "text",
-                        text = $"{greeting}กรุณาแชร์ตำแหน่งที่ตั้งของคุณ เพื่อให้ระบบดึงชื่อหน่วยงานใกล้เคียงให้เลือกเพื่อ{GetActionText(type)}",
+                        text = $"{greeting}กรุณาแชร์ตำแหน่งของคุณ แล้วระบบจะดึงชื่อหน่วยงานใกล้เคียงให้เลือกเพื่อ{GetActionText(type)}",
                         wrap = true,
                         size = "md",
                         color = "#333333"
@@ -634,7 +634,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                         action = new
                         {
                             type = "uri",
-                            label = "🌏ส่งแชร์ตำแหน่ง",
+                            label = "ส่งแชร์ตำแหน่ง",
                             uri = "line://nv/location"
                         }
                     }
