@@ -634,7 +634,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                         action = new
                         {
                             type = "uri",
-                            label = "ส่งแชร์ตำแหน่ง🗺️",
+                            label = "🌏ส่งแชร์ตำแหน่ง",
                             uri = "line://nv/location"
                         }
                     }
