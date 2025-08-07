@@ -70,16 +70,29 @@ public class WorkingTimeProcessor : ILineMessageProcessor
             return await HandleCheckInCommand(userId, replyToken, WorkingTimeType.CheckOut, accessToken, cancellationToken);
         }
 
-        // Check if message is postback from FLEX message (agency selection)
+        // Check if message is postback from FLEX message
         if (evt.Type == "postback")
         {
-            return await HandleAgencySelection(evt, userId, replyToken, cancellationToken);
+            var postbackData = evt.Postback?.Data ?? string.Empty;
+            
+            // Handle email registration confirmation
+            if (postbackData.StartsWith("confirm_email_registration_"))
+            {
+                var email = postbackData.Substring("confirm_email_registration_".Length);
+                return await HandleEmailRegistration(email, userId, replyToken, cancellationToken);
+            }
+            
+            // Handle agency selection
+            if (postbackData.StartsWith("office_selected_") || postbackData.StartsWith("current_location_selected_"))
+            {
+                return await HandleAgencySelection(evt, userId, replyToken, cancellationToken);
+            }
         }
 
         // Check if message is an email address (for registration)
         if (IsValidEmail(message))
         {
-            return await HandleEmailRegistration(message, userId, replyToken, cancellationToken);
+            return await ShowEmailConfirmation(message, userId, replyToken, cancellationToken);
         }
         
         // Return 404 for unrecognized messages
@@ -415,7 +428,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                     ReplyToken = replyToken,
                     Messages = new List<LineMessage>
                     {
-                        new LineTextMessage("กรุณาผูก LineId ของคุณกับอีเมลของบริษัทก่อน โดยการพิมพ์อีเมลบริษัท xxx@nti.co.th แล้วกดส่งข้อความ")
+                        new LineTextMessage("📧กรุณาลงทะเบียนผูก LineId ของคุณกับอีเมลบริษัท ด้วยการพิมพ์อีเมล xxx@nti.co.th แล้วกดส่งข้อความ")
                     }
                 }
             };
@@ -989,6 +1002,87 @@ public class WorkingTimeProcessor : ILineMessageProcessor
     }
     
     /// <summary>
+    /// Shows a confirmation flex message for email registration
+    /// </summary>
+    /// <param name="email">The company email address</param>
+    /// <param name="lineUserId">The LINE user ID</param>
+    /// <param name="replyToken">The reply token for sending response</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>LineReplyStatus with confirmation flex message</returns>
+    private async Task<LineReplyStatus> ShowEmailConfirmation(string email, string lineUserId, string replyToken, CancellationToken cancellationToken)
+    {
+        // Create a flex message with confirmation button
+        var flexMessage = new
+        {
+            type = "bubble",
+            body = new
+            {
+                type = "box",
+                layout = "vertical",
+                contents = new object[]
+                {
+                    new
+                    {
+                        type = "text",
+                        text = "ยืนยันผูก LineId กับอีเมล",
+                        weight = "bold",
+                        size = "lg",
+                        margin = "md"
+                    },
+                    new
+                    {
+                        type = "box",
+                        layout = "vertical",
+                        margin = "sm",
+                        contents = new object[]
+                        {
+                            new
+                            {
+                                type = "text",
+                                text = email,
+                                wrap = true,
+                                color = "#007bff",
+                                size = "xl",
+                                weight = "bold"
+                            }
+                        }
+                    }
+                },
+                paddingAll = "20px"
+            },
+            footer = new
+            {
+                type = "box",
+                layout = "vertical",
+                contents = new object[]
+                {
+                    new
+                    {
+                        type = "button",
+                        action = new
+                        {
+                            type = "postback",
+                            label = "ยืนยัน",
+                            data = $"confirm_email_registration_{email}"
+                        },
+                        style = "primary"
+                    }
+                }
+            }
+        };
+
+        return new LineReplyStatus
+        {
+            Status = 201, // Special status for FLEX messages
+            Raw = JsonSerializer.Serialize(flexMessage, new JsonSerializerOptions
+            {
+                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+                WriteIndented = false
+            })
+        };
+    }
+    
+    /// <summary>
     /// Handles the email registration process
     /// </summary>
     /// <param name="email">The company email address</param>
@@ -1039,7 +1133,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
             httpClient.DefaultRequestHeaders.Add("Authorization", apiToken);
             
             // Make POST request to register the user
-            var response = await httpClient.PostAsync(apiUrl, content, cancellationToken);
+            var response = await httpClient.PostAsync($"{apiUrl}/GetUserid", content, cancellationToken);
             
             if (response.IsSuccessStatusCode)
             {
