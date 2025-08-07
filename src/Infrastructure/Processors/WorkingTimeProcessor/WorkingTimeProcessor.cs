@@ -163,7 +163,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
             // Create multi-line success message
             var successMessage = $"😀{displayName}: บันทึก{GetActionText(session.Type)}✅\n" +
                                 $"🏢{session.SelectedOfficeName ?? "Unknown Location"}\n" +
-                                $"📌{(session.SelectedOfficeLatitude.HasValue && session.SelectedOfficeLongitude.HasValue ? $"{session.SelectedOfficeLatitude:F6},{session.SelectedOfficeLongitude:F6}" : "Unknown Coordinates")}\n" +
+                                $"📍{(session.SelectedOfficeLatitude.HasValue && session.SelectedOfficeLongitude.HasValue ? $"{session.SelectedOfficeLatitude:F6},{session.SelectedOfficeLongitude:F6}" : "Unknown Coordinates")}\n" +
                                 $"⏰{timestamp}";
 
             return new LineReplyStatus
@@ -228,8 +228,71 @@ public class WorkingTimeProcessor : ILineMessageProcessor
         // Find nearby government offices
         var offices = await FindNearbyOffices(latitude, longitude, cancellationToken);
 
+        // Create a single FLEX message with both current location and nearby offices
+        var contents = new List<object>();
+
+        // Add current location section
+        contents.Add(new
+        {
+            type = "bubble",
+            body = new
+            {
+                type = "box",
+                layout = "vertical",
+                contents = new object[]
+                {
+                    new
+                    {
+                        type = "text",
+                        text = "📍ตำแหน่งปัจจุบัน (ไม่ระบุชื่อหน่วยงาน)",
+                        weight = "bold",
+                        size = "lg",
+                        margin = "md"
+                    },
+                    new
+                    {
+                        type = "box",
+                        layout = "vertical",
+                        margin = "sm",
+                        contents = new object[]
+                        {
+                            new
+                            {
+                                type = "text",
+                                text = address ?? $"Lat: {latitude:F6}, Lng: {longitude:F6}",
+                                wrap = true,
+                                color = "#666666",
+                                size = "sm"
+                            }
+                        }
+                    }
+                },
+                paddingAll = "20px"
+            },
+            footer = new
+            {
+                type = "box",
+                layout = "vertical",
+                contents = new object[]
+                {
+                    new
+                    {
+                        type = "button",
+                        action = new
+                        {
+                            type = "postback",
+                            label = "เลือก",
+                            data = $"current_location_selected_{latitude:F6}_{longitude:F6}"
+                        },
+                        style = "primary"
+                    }
+                }
+            }
+        });
+
         if (offices.Count == 0)
         {
+            // Add error message as a text message
             return new LineReplyStatus
             {
                 Status = 200,
@@ -244,13 +307,72 @@ public class WorkingTimeProcessor : ILineMessageProcessor
             };
         }
 
-        // Create FLEX message with carousel of offices
-        var flexMessage = CreateOfficeSelectionFlexMessage(offices);
+        // Add nearby offices section
+        foreach (var office in offices)
+        {
+            contents.Add(new
+            {
+                type = "bubble",
+                body = new
+                {
+                    type = "box",
+                    layout = "vertical",
+                    contents = new object[]
+                    {
+                        new
+                        {
+                            type = "text",
+                            text = $"🏢{office.Name}",
+                            weight = "bold",
+                            size = "md"
+                        },
+                        new
+                        {
+                            type = "text",
+                            text = $"📍{office.Address}" ?? $"Lat: {office.Latitude:F6}, Lng: {office.Longitude:F6}",
+                            size = "sm",
+                            color = "#666666",
+                            wrap = true
+                        }
+                    }
+                },
+                footer = new
+                {
+                    type = "box",
+                    layout = "vertical",
+                    contents = new object[]
+                    {
+                        new
+                        {
+                            type = "button",
+                            action = new
+                            {
+                                type = "postback",
+                                label = "เลือก",
+                                data = $"office_selected_{office.PlaceId}"
+                            },
+                            style = "primary"
+                        }
+                    }
+                }
+            });
+        }
+
+        // Create the combined FLEX message
+        var flexMessage = new
+        {
+            type = "carousel",
+            contents = contents.ToArray()
+        };
 
         return new LineReplyStatus
         {
             Status = 201, // Special status for FLEX messages
-            Raw = flexMessage
+            Raw = JsonSerializer.Serialize(flexMessage, new JsonSerializerOptions
+            {
+                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+                WriteIndented = false
+            })
         };
     }
 
@@ -553,7 +675,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                         new
                         {
                             type = "text",
-                            text = $"📌{office.Address}" ?? $"Lat: {office.Latitude:F6}, Lng: {office.Longitude:F6}",
+                            text = $"📍{office.Address}" ?? $"Lat: {office.Latitude:F6}, Lng: {office.Longitude:F6}",
                             size = "sm",
                             color = "#666666",
                             wrap = true
@@ -586,6 +708,55 @@ public class WorkingTimeProcessor : ILineMessageProcessor
         {
             type = "carousel",
             contents = contents.ToArray()
+        };
+
+        return JsonSerializer.Serialize(flexMessage, new JsonSerializerOptions
+        {
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            WriteIndented = false
+        });
+    }
+
+    private string CreateCurrentLocationFlexMessage(double latitude, double longitude, string? address)
+    {
+        // Create a Flex message for the current location
+        var flexMessage = new
+        {
+            type = "bubble",
+            body = new
+            {
+                type = "box",
+                layout = "vertical",
+                contents = new object[]
+                {
+                    new
+                    {
+                        type = "text",
+                        text = "📍ตำแหน่งปัจจุบันของคุณ",
+                        weight = "bold",
+                        size = "lg",
+                        margin = "md"
+                    },
+                    new
+                    {
+                        type = "box",
+                        layout = "vertical",
+                        margin = "sm",
+                        contents = new object[]
+                        {
+                            new
+                            {
+                                type = "text",
+                                text = address ?? $"Lat: {latitude:F6}, Lng: {longitude:F6}",
+                                wrap = true,
+                                color = "#666666",
+                                size = "sm"
+                            }
+                        }
+                    }
+                },
+                paddingAll = "20px"
+            }
         };
 
         return JsonSerializer.Serialize(flexMessage, new JsonSerializerOptions
