@@ -228,10 +228,78 @@ public class WorkingTimeProcessor : ILineMessageProcessor
         // Find nearby government offices
         var offices = await FindNearbyOffices(latitude, longitude, cancellationToken);
 
-        // Create a single FLEX message with both current location and nearby offices
+        // Create a single FLEX message with both nearby offices and current location
         var contents = new List<object>();
 
-        // Add current location section
+        if (offices.Count == 0)
+        {
+            // Add error message as a text message
+            return new LineReplyStatus
+            {
+                Status = 200,
+                ReplyMessage = new LineReplyMessage
+                {
+                    ReplyToken = replyToken,
+                    Messages = new List<LineMessage>
+                    {
+                        new LineTextMessage("⚠️ไม่พบหน่วยงานที่อยู่ใกล้เคียง กรุณาลองใหม่อีกครั้ง")
+                    }
+                }
+            };
+        }
+
+        // Add nearby offices section first
+        foreach (var office in offices)
+        {
+            contents.Add(new
+            {
+                type = "bubble",
+                body = new
+                {
+                    type = "box",
+                    layout = "vertical",
+                    contents = new object[]
+                    {
+                        new
+                        {
+                            type = "text",
+                            text = $"🏢{office.Name}",
+                            weight = "bold",
+                            size = "md"
+                        },
+                        new
+                        {
+                            type = "text",
+                            text = $"📍{office.Address}" ?? $"Lat: {office.Latitude:F6}, Lng: {office.Longitude:F6}",
+                            size = "sm",
+                            color = "#666666",
+                            wrap = true
+                        }
+                    }
+                },
+                footer = new
+                {
+                    type = "box",
+                    layout = "vertical",
+                    contents = new object[]
+                    {
+                        new
+                        {
+                            type = "button",
+                            action = new
+                            {
+                                type = "postback",
+                                label = "เลือก",
+                                data = $"office_selected_{office.PlaceId}"
+                            },
+                            style = "primary"
+                        }
+                    }
+                }
+            });
+        }
+
+        // Add current location section at the end
         contents.Add(new
         {
             type = "bubble",
@@ -289,74 +357,6 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                 }
             }
         });
-
-        if (offices.Count == 0)
-        {
-            // Add error message as a text message
-            return new LineReplyStatus
-            {
-                Status = 200,
-                ReplyMessage = new LineReplyMessage
-                {
-                    ReplyToken = replyToken,
-                    Messages = new List<LineMessage>
-                    {
-                        new LineTextMessage("⚠️ไม่พบหน่วยงานที่อยู่ใกล้เคียง กรุณาลองใหม่อีกครั้ง")
-                    }
-                }
-            };
-        }
-
-        // Add nearby offices section
-        foreach (var office in offices)
-        {
-            contents.Add(new
-            {
-                type = "bubble",
-                body = new
-                {
-                    type = "box",
-                    layout = "vertical",
-                    contents = new object[]
-                    {
-                        new
-                        {
-                            type = "text",
-                            text = $"🏢{office.Name}",
-                            weight = "bold",
-                            size = "md"
-                        },
-                        new
-                        {
-                            type = "text",
-                            text = $"📍{office.Address}" ?? $"Lat: {office.Latitude:F6}, Lng: {office.Longitude:F6}",
-                            size = "sm",
-                            color = "#666666",
-                            wrap = true
-                        }
-                    }
-                },
-                footer = new
-                {
-                    type = "box",
-                    layout = "vertical",
-                    contents = new object[]
-                    {
-                        new
-                        {
-                            type = "button",
-                            action = new
-                            {
-                                type = "postback",
-                                label = "เลือก",
-                                data = $"office_selected_{office.PlaceId}"
-                            },
-                            style = "primary"
-                        }
-                    }
-                }
-            });
-        }
 
         // Create the combined FLEX message
         var flexMessage = new
