@@ -76,6 +76,12 @@ public class WorkingTimeProcessor : ILineMessageProcessor
             return await HandleAgencySelection(evt, userId, replyToken, cancellationToken);
         }
 
+        // Check if message is an email address (for registration)
+        if (IsValidEmail(message))
+        {
+            return await HandleEmailRegistration(message, userId, replyToken, cancellationToken);
+        }
+        
         // Return 404 for unrecognized messages
         return new LineReplyStatus { Status = 404 };
     }
@@ -394,6 +400,26 @@ public class WorkingTimeProcessor : ILineMessageProcessor
     {
         // Log that we're handling the check-in command
         _logger.LogInformation("Handling check-in command for user {UserId}, type {Type}", userId, type);
+        
+        // First check if user is registered
+        var isRegistered = await CheckUserRegistration(userId, cancellationToken);
+        
+        if (!isRegistered)
+        {
+            // User is not registered, prompt them to register with company email
+            return new LineReplyStatus
+            {
+                Status = 200,
+                ReplyMessage = new LineReplyMessage
+                {
+                    ReplyToken = replyToken,
+                    Messages = new List<LineMessage>
+                    {
+                        new LineTextMessage("กรุณาผูก LineId ของคุณกับอีเมลของบริษัทก่อน โดยการพิมพ์อีเมลบริษัท xxx@nti.co.th แล้วกดส่งข้อความ")
+                    }
+                }
+            };
+        }
         
         // Create new session
         var session = new WorkingTimeSession
@@ -935,6 +961,199 @@ public class WorkingTimeProcessor : ILineMessageProcessor
             return false;
         }
     }
+
+    /// <summary>
+    /// Validates if a string is a valid email address
+    /// </summary>
+    /// <param name="email">The email string to validate</param>
+    /// <returns>True if valid email, false otherwise</returns>
+    private bool IsValidEmail(string email)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+            return false;
+            
+        // Check if email ends with @nti.co.th
+        if (!email.EndsWith("@nti.co.th", StringComparison.OrdinalIgnoreCase))
+            return false;
+            
+        try
+        {
+            // Use simple regex to validate email format
+            var emailRegex = new System.Text.RegularExpressions.Regex(@"^[^@\s]+@[^@\s]+\.[^@\s]+$");
+            return emailRegex.IsMatch(email);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+    
+    /// <summary>
+    /// Handles the email registration process
+    /// </summary>
+    /// <param name="email">The company email address</param>
+    /// <param name="lineUserId">The LINE user ID</param>
+    /// <param name="replyToken">The reply token for sending response</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>LineReplyStatus with appropriate response</returns>
+    private async Task<LineReplyStatus> HandleEmailRegistration(string email, string lineUserId, string replyToken, CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Get the SSO API URL and token from configuration
+            var apiUrl = _configuration["WorkingTime:SSOApiUrl"];
+            var apiToken = _configuration["WorkingTime:SSOApiUrlToken"];
+            
+            if (string.IsNullOrEmpty(apiUrl) || string.IsNullOrEmpty(apiToken))
+            {
+                _logger.LogError("SSO API configuration is missing");
+                return new LineReplyStatus
+                {
+                    Status = 200,
+                    ReplyMessage = new LineReplyMessage
+                    {
+                        ReplyToken = replyToken,
+                        Messages = new List<LineMessage>
+                        {
+                            new LineTextMessage("เกิดข้อผิดพลาดในการเชื่อมต่อกับระบบ กรุณาลองใหม่อีกครั้ง")
+                        }
+                    }
+                };
+            }
+            
+            // Prepare the request data
+            var requestData = new
+            {
+                LineUserId = lineUserId,
+                Email = email
+            };
+            
+            // Create JSON content
+            var jsonContent = JsonSerializer.Serialize(requestData);
+            var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+            
+            // Create HTTP client
+            var httpClient = _httpClientFactory.CreateClient("resilient_nocompress");
+            
+            // Add authorization header
+            httpClient.DefaultRequestHeaders.Add("Authorization", apiToken);
+            
+            // Make POST request to register the user
+            var response = await httpClient.PostAsync(apiUrl, content, cancellationToken);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                // Registration successful
+                _logger.LogInformation("User {UserId} successfully registered with email {Email}", lineUserId, email);
+                
+                // Now proceed with the check-in/check-out flow
+                var session = new WorkingTimeSession
+                {
+                    UserId = lineUserId,
+                    Type = WorkingTimeType.CheckIn, // Default to check-in
+                    Step = WorkingTimeStep.WaitingForLocation,
+                    CreatedAt = DateTime.UtcNow
+                };
+                
+                // Save session to cache
+                await _cache.SetObjectAsync($"workingtime_session:{lineUserId}", session, 30, false);
+                
+                // Get user's display name
+                string? displayName = await GetLineProfileName(lineUserId, "", cancellationToken);
+                string greeting = !string.IsNullOrEmpty(displayName) ? $"😀สวัสดีคุณ {displayName} " : "";
+                
+                // Create FLEX message with location request button
+                var flexMessage = CreateLocationRequestFlexMessage(greeting, WorkingTimeType.CheckIn);
+                
+                return new LineReplyStatus
+                {
+                    Status = 201, // Special status for FLEX messages
+                    Raw = flexMessage
+                };
+            }
+            else
+            {
+                // Registration failed
+                _logger.LogError("Failed to register user {UserId} with email {Email}. Status: {StatusCode}", 
+                    lineUserId, email, response.StatusCode);
+                    
+                return new LineReplyStatus
+                {
+                    Status = 200,
+                    ReplyMessage = new LineReplyMessage
+                    {
+                        ReplyToken = replyToken,
+                        Messages = new List<LineMessage>
+                        {
+                            new LineTextMessage("ไม่สามารถลงทะเบียนได้ กรุณาตรวจสอบอีเมลและลองอีกครั้ง")
+                        }
+                    }
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during email registration for user {UserId}", lineUserId);
+            return new LineReplyStatus
+            {
+                Status = 200,
+                ReplyMessage = new LineReplyMessage
+                {
+                    ReplyToken = replyToken,
+                    Messages = new List<LineMessage>
+                    {
+                        new LineTextMessage("เกิดข้อผิดพลาดในการลงทะเบียน กรุณาลองใหม่อีกครั้ง")
+                    }
+                }
+            };
+        }
+    }
+
+    /// <summary>
+    /// Checks if a user is registered by calling the SSO API
+    /// </summary>
+    /// <param name="lineUserId">The LINE user ID</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>True if user is registered, false otherwise</returns>
+    private async Task<bool> CheckUserRegistration(string lineUserId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Get API URL and token from configuration
+            var apiUrl = _configuration["WorkingTime:SSOApiUrl"];
+            var apiToken = _configuration["WorkingTime:SSOApiUrlToken"];
+            
+            if (string.IsNullOrEmpty(apiUrl) || string.IsNullOrEmpty(apiToken))
+            {
+                _logger.LogError("SSO API configuration is missing");
+                return false;
+            }
+            
+            // Construct the full URL with the line user ID
+            var url = $"{apiUrl}?LineUserId={lineUserId}";
+            
+            // Create HTTP client
+            var httpClient = _httpClientFactory.CreateClient("resilient_nocompress");
+            
+            // Add authorization header
+            httpClient.DefaultRequestHeaders.Add("Authorization", apiToken);
+            
+            // Make the request
+            var response = await httpClient.GetAsync(url, cancellationToken);
+            
+            // Log the response for debugging
+            _logger.LogInformation("SSO API response status: {StatusCode} for user {UserId}", response.StatusCode, lineUserId);
+            
+            // Return true if we get a 200 OK response, false for 404 or any other status
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error checking user registration for user {UserId}", lineUserId);
+            return false;
+        }
+    }
+
     private async Task<string?> GetLineProfileName(string userId, string accessToken, CancellationToken cancellationToken)
     {
         var client = _httpClientFactory.CreateClient("resilient_nocompress");
