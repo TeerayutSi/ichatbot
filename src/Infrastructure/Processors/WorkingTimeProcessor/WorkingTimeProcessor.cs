@@ -1132,12 +1132,17 @@ public class WorkingTimeProcessor : ILineMessageProcessor
             // Create HTTP client
             var httpClient = _httpClientFactory.CreateClient("resilient_nocompress");
             
-            // Add authorization and content type headers
-            httpClient.DefaultRequestHeaders.Add("Authorization", apiToken);
-            httpClient.DefaultRequestHeaders.Add("Content-Type", "application/json");
+            // Create request message
+            var request = new HttpRequestMessage(HttpMethod.Post, registerUrl)
+            {
+                Content = content
+            };
+            
+            // Add headers
+            request.Headers.Add("Authorization", apiToken);
             
             // Make POST request to register the user
-            var response = await httpClient.PostAsync(registerUrl, content, cancellationToken);
+            var response = await httpClient.SendAsync(request, cancellationToken);
             
             if (response.IsSuccessStatusCode)
             {
