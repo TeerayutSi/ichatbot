@@ -891,8 +891,8 @@ public class WorkingTimeProcessor : ILineMessageProcessor
             LatLong = $"{session.SelectedOfficeLatitude ?? session.Latitude ?? 0},{session.SelectedOfficeLongitude ?? session.Longitude ?? 0}", // Latitude Longitude
             Location = session.SelectedOfficeName ?? "Unknown Location", // AgencyName
             IpAddress = "0.0.0.0", // IP address is not available in the session data
-            OrganizationName = "NTI", // Organization name
-            ProjectName = "NTI Project", // Project name
+            OrganizationName = session.SelectedOfficeName ?? "Unknown Location", // Organization name
+            ProjectName = "", // Project name
             FileName = fileName, // generate picture file name
             Base64 = base64Photo // take a photo byte[] > base64
         };
