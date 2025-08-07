@@ -1095,10 +1095,10 @@ public class WorkingTimeProcessor : ILineMessageProcessor
         try
         {
             // Get the SSO API URL and token from configuration
-            var apiUrl = _configuration["WorkingTime:SSOApiUrl"];
+            var baseUrl = _configuration["WorkingTime:SSOApiUrl"];
             var apiToken = _configuration["WorkingTime:SSOApiUrlToken"];
             
-            if (string.IsNullOrEmpty(apiUrl) || string.IsNullOrEmpty(apiToken))
+            if (string.IsNullOrEmpty(baseUrl) || string.IsNullOrEmpty(apiToken))
             {
                 _logger.LogError("SSO API configuration is missing");
                 return new LineReplyStatus
@@ -1115,10 +1115,13 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                 };
             }
             
+            // Get the base API URL and construct the RegisterLinebotUserId endpoint
+            var registerUrl = $"{baseUrl.TrimEnd('/')}/RegisterLinebotUserId";
+            
             // Prepare the request data
             var requestData = new
             {
-                LineUserId = lineUserId,
+                LinebotUserId = lineUserId,
                 Email = email
             };
             
@@ -1129,11 +1132,12 @@ public class WorkingTimeProcessor : ILineMessageProcessor
             // Create HTTP client
             var httpClient = _httpClientFactory.CreateClient("resilient_nocompress");
             
-            // Add authorization header
+            // Add authorization and content type headers
             httpClient.DefaultRequestHeaders.Add("Authorization", apiToken);
+            httpClient.DefaultRequestHeaders.Add("Content-Type", "application/json");
             
             // Make POST request to register the user
-            var response = await httpClient.PostAsync($"{apiUrl}/GetUserid", content, cancellationToken);
+            var response = await httpClient.PostAsync(registerUrl, content, cancellationToken);
             
             if (response.IsSuccessStatusCode)
             {
@@ -1214,17 +1218,18 @@ public class WorkingTimeProcessor : ILineMessageProcessor
         try
         {
             // Get API URL and token from configuration
-            var apiUrl = _configuration["WorkingTime:SSOApiUrl"];
+            var baseUrl = _configuration["WorkingTime:SSOApiUrl"];
             var apiToken = _configuration["WorkingTime:SSOApiUrlToken"];
             
-            if (string.IsNullOrEmpty(apiUrl) || string.IsNullOrEmpty(apiToken))
+            if (string.IsNullOrEmpty(baseUrl) || string.IsNullOrEmpty(apiToken))
             {
                 _logger.LogError("SSO API configuration is missing");
                 return false;
             }
-            
+
             // Construct the full URL with the line user ID
-            var url = $"{apiUrl}?LineUserId={lineUserId}";
+            var registerUrl = $"{baseUrl.TrimEnd('/')}/GetUserid";
+            var url = $"{registerUrl}?LineUserId={lineUserId}";
             
             // Create HTTP client
             var httpClient = _httpClientFactory.CreateClient("resilient_nocompress");
