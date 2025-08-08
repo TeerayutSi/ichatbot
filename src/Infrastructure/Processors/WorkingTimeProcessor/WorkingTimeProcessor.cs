@@ -121,6 +121,24 @@ public class WorkingTimeProcessor : ILineMessageProcessor
             }
         }
 
+        // Check if message is hide menu command
+        if (IsHideMenuCommand(message))
+        {
+            // Show a message that keyboard is active
+            return new LineReplyStatus
+            {
+                Status = 200,
+                ReplyMessage = new LineReplyMessage
+                {
+                    ReplyToken = replyToken,
+                    Messages = new List<LineMessage>
+                    {
+                        new LineTextMessage("⌨️ คีย์บอร์ดพร้อมใช้งาน สามารถพิมพ์ข้อความได้ตามปกติ\nพิมพ์ \"เมนู\" เพื่อแสดงเมนูอีกครั้ง")
+                    }
+                }
+            };
+        }
+        
         // Check if message is menu command
         if (IsMenuCommand(message))
         {
@@ -455,8 +473,14 @@ public class WorkingTimeProcessor : ILineMessageProcessor
 
     private bool IsMenuCommand(string message)
     {
-        var menuCommands = new[] { "เมนู", "menu", "Menu" };
+        var menuCommands = new[] { "เมนู", "menu", "Menu", "แสดงเมนู", "show menu" };
         return menuCommands.Contains(message.ToLowerInvariant().Trim());
+    }
+    
+    private bool IsHideMenuCommand(string message)
+    {
+        var hideMenuCommands = new[] { "ซ่อนเมนู", "hide menu", "keyboard", "คีย์บอร์ด" };
+        return hideMenuCommands.Contains(message.ToLowerInvariant().Trim());
     }
 
     private async Task<LineReplyStatus> HandleCheckInCommand(string userId, string replyToken, WorkingTimeType type, string accessToken, CancellationToken cancellationToken)
@@ -961,7 +985,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                                 action = new
                                 {
                                     type = "postback",
-                                    label = "📧ลงทะเบียน",
+                                    label = "ลงทะเบียน",
                                     data = "menu_register"
                                 },
                                 style = "primary",
@@ -985,7 +1009,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                                 action = new
                                 {
                                     type = "postback",
-                                    label = "🕑ลงเวลาเข้า",
+                                    label = "ลงเวลาเข้า",
                                     data = "menu_checkin"
                                 },
                                 style = "primary",
@@ -999,7 +1023,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                                 action = new
                                 {
                                     type = "postback",
-                                    label = "🕑ลงเวลาออก",
+                                    label = "ลงเวลาออก",
                                     data = "menu_checkout"
                                 },
                                 style = "primary",
@@ -1024,7 +1048,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                                 action = new
                                 {
                                     type = "uri",
-                                    label = "📆แจ้งตารางงาน",
+                                    label = "แจ้งตารางงาน",
                                     uri = "https://crm.nti.co.th"
                                 },
                                 style = "secondary",
@@ -1038,7 +1062,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                                 action = new
                                 {
                                     type = "uri",
-                                    label = "📅นัดหมาย",
+                                    label = "นัดหมาย",
                                     uri = "https://crm.nti.co.th"
                                 },
                                 style = "secondary",
@@ -1129,7 +1153,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
             OrganizationName = session.SelectedOfficeName ?? "Unknown Location", // Organization name
             FileName = fileName, // generate picture file name
             Base64 = base64Photo, // take a photo byte[] > base64
-            Type = session.Type == WorkingTimeType.CheckIn ? "checkin" : "checkout", // Type of action
+            CheckInCheckOutTypes = session.Type == WorkingTimeType.CheckIn ? "checkin" : "checkout", // Type of action
         };
 
         try
