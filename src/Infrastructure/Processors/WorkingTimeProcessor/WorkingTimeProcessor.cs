@@ -245,7 +245,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
             var successMessage = $"😀{displayName}: บันทึก{GetActionText(session.Type)}✅\n" +
                                 $"🏢{session.SelectedOfficeName ?? "Unknown Location"}\n" +
                                 $"📍{(session.SelectedOfficeLatitude.HasValue && session.SelectedOfficeLongitude.HasValue ? $"{session.SelectedOfficeLatitude:F6},{session.SelectedOfficeLongitude:F6}" : "Unknown Coordinates")}\n" +
-                                $"⏰{timestamp}";
+                                $"🕑{timestamp}";
 
             return new LineReplyStatus
             {
