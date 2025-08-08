@@ -245,7 +245,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
             var successMessage = $"😀{displayName}: บันทึก{GetActionText(session.Type)}✅\n" +
                                 $"🏢{session.SelectedOfficeName ?? "Unknown Location"}\n" +
                                 $"📍{(session.SelectedOfficeLatitude.HasValue && session.SelectedOfficeLongitude.HasValue ? $"{session.SelectedOfficeLatitude:F6},{session.SelectedOfficeLongitude:F6}" : "Unknown Coordinates")}\n" +
-                                $"🕑{timestamp}";
+                                $"⏰{timestamp}";
 
             return new LineReplyStatus
             {
@@ -1153,7 +1153,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
             OrganizationName = session.SelectedOfficeName ?? "Unknown Location", // Organization name
             FileName = fileName, // generate picture file name
             Base64 = base64Photo, // take a photo byte[] > base64
-            CheckInCheckOutTypes = session.Type == WorkingTimeType.CheckIn ? "checkin" : "checkout", // Type of action
+            CheckInCheckOutTypes = session.Type == WorkingTimeType.CheckIn ? 0 : 1, // Type of action: 0=CheckIn, 1=CheckOut
         };
 
         try
