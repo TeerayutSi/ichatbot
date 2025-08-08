@@ -19,7 +19,7 @@ namespace ChatbotApi.Infrastructure.Processors.WorkingTimeProcessor;
 
 public class WorkingTimeProcessor : ILineMessageProcessor
 {
-    public string Name => "WorkingTime";
+    public string Name => Systems.WorkingTime;
 
     private readonly IApplicationDbContext _context;
     private readonly IHttpClientFactory _httpClientFactory;
@@ -84,6 +84,36 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                 return await HandleEmailRegistration(cleanEmail, userId, replyToken, cancellationToken);
             }
             
+            // Handle menu actions
+            if (postbackData == "menu_register")
+            {
+                // For registration, we just show the registration message
+                return new LineReplyStatus
+                {
+                    Status = 200,
+                    ReplyMessage = new LineReplyMessage
+                    {
+                        ReplyToken = replyToken,
+                        Messages = new List<LineMessage>
+                        {
+                            new LineTextMessage("📧กรุณาลงทะเบียนผูก LineId ของคุณกับอีเมลบริษัท ด้วยการพิมพ์อีเมล xxx@nti.co.th แล้วกดส่งข้อความ")
+                        }
+                    }
+                };
+            }
+            
+            if (postbackData == "menu_checkin")
+            {
+                // Handle check-in with registration check
+                return await HandleCheckInCommand(userId, replyToken, WorkingTimeType.CheckIn, accessToken, cancellationToken);
+            }
+            
+            if (postbackData == "menu_checkout")
+            {
+                // Handle check-out with registration check
+                return await HandleCheckInCommand(userId, replyToken, WorkingTimeType.CheckOut, accessToken, cancellationToken);
+            }
+
             // Handle agency selection
             if (postbackData.StartsWith("office_selected_") || postbackData.StartsWith("current_location_selected_"))
             {
@@ -91,6 +121,18 @@ public class WorkingTimeProcessor : ILineMessageProcessor
             }
         }
 
+        // Check if message is menu command
+        if (IsMenuCommand(message))
+        {
+            // Create and send the menu Flex message
+            var flexMessage = CreateMenuFlexMessage();
+            return new LineReplyStatus
+            {
+                Status = 201, // Special status for FLEX messages
+                Raw = flexMessage
+            };
+        }
+        
         // Check if message is an email address (for registration)
         if (IsValidEmail(message))
         {
@@ -185,7 +227,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
             var successMessage = $"😀{displayName}: บันทึก{GetActionText(session.Type)}✅\n" +
                                 $"🏢{session.SelectedOfficeName ?? "Unknown Location"}\n" +
                                 $"📍{(session.SelectedOfficeLatitude.HasValue && session.SelectedOfficeLongitude.HasValue ? $"{session.SelectedOfficeLatitude:F6},{session.SelectedOfficeLongitude:F6}" : "Unknown Coordinates")}\n" +
-                                $"⏰{timestamp}";
+                                $"🕑{timestamp}";
 
             return new LineReplyStatus
             {
@@ -409,6 +451,12 @@ public class WorkingTimeProcessor : ILineMessageProcessor
     {
         var checkOutCommands = new[] { "เช็คเอาต์", "เช็คเอาท์", "check-out", "check out", "checkout" };
         return checkOutCommands.Contains(message.ToLowerInvariant().Trim());
+    }
+
+    private bool IsMenuCommand(string message)
+    {
+        var menuCommands = new[] { "เมนู", "menu", "Menu" };
+        return menuCommands.Contains(message.ToLowerInvariant().Trim());
     }
 
     private async Task<LineReplyStatus> HandleCheckInCommand(string userId, string replyToken, WorkingTimeType type, string accessToken, CancellationToken cancellationToken)
@@ -864,6 +912,152 @@ public class WorkingTimeProcessor : ILineMessageProcessor
         _logger.LogInformation("Generated location request flex message JSON: {Json}", json);
 
         return json;
+    }
+
+    /// <summary>
+    /// Creates a Flex message with a menu of 6 items in 2 rows (3 items per row)
+    /// </summary>
+    /// <returns>JSON string of the Flex message</returns>
+    private string CreateMenuFlexMessage()
+    {
+        // Create a Flex message with a menu of 5 items in 3 rows
+        var flexMessage = new
+        {
+            type = "bubble",
+            body = new
+            {
+                type = "box",
+                layout = "vertical",
+                contents = new object[]
+                {
+                    // Header
+                    new
+                    {
+                        type = "text",
+                        text = "เมนูการทำงาน",
+                        weight = "bold",
+                        size = "xl",
+                        align = "center",
+                        margin = "md"
+                    },
+                    // Separator
+                    new
+                    {
+                        type = "separator",
+                        margin = "lg"
+                    },
+                    // Row 1: Register (full width)
+                    new
+                    {
+                        type = "box",
+                        layout = "horizontal",
+                        margin = "lg",
+                        contents = new object[]
+                        {
+                            // Register button
+                            new
+                            {
+                                type = "button",
+                                action = new
+                                {
+                                    type = "postback",
+                                    label = "📧ลงทะเบียน",
+                                    data = "menu_register"
+                                },
+                                style = "primary",
+                                color = "#007bff",
+                                flex = 1
+                            }
+                        }
+                    },
+                    // Row 2: Check-in, Check-out
+                    new
+                    {
+                        type = "box",
+                        layout = "horizontal",
+                        margin = "md",
+                        contents = new object[]
+                        {
+                            // Check-in button
+                            new
+                            {
+                                type = "button",
+                                action = new
+                                {
+                                    type = "postback",
+                                    label = "🕑ลงเวลาเข้า",
+                                    data = "menu_checkin"
+                                },
+                                style = "primary",
+                                color = "#28a745",
+                                flex = 1
+                            },
+                            // Check-out button
+                            new
+                            {
+                                type = "button",
+                                action = new
+                                {
+                                    type = "postback",
+                                    label = "🕑ลงเวลาออก",
+                                    data = "menu_checkout"
+                                },
+                                style = "primary",
+                                color = "#dc3545",
+                                flex = 1,
+                                margin = "sm"
+                            }
+                        }
+                    },
+                    // Row 3: Work schedule, Appointment
+                    new
+                    {
+                        type = "box",
+                        layout = "horizontal",
+                        margin = "md",
+                        contents = new object[]
+                        {
+                            // Work schedule button
+                            new
+                            {
+                                type = "button",
+                                action = new
+                                {
+                                    type = "uri",
+                                    label = "📆แจ้งตารางงาน",
+                                    uri = "https://crm.nti.co.th"
+                                },
+                                style = "secondary",
+                                color = "#6c757d",
+                                flex = 1
+                            },
+                            // Appointment button
+                            new
+                            {
+                                type = "button",
+                                action = new
+                                {
+                                    type = "uri",
+                                    label = "📅นัดหมาย",
+                                    uri = "https://crm.nti.co.th"
+                                },
+                                style = "secondary",
+                                color = "#6c757d",
+                                flex = 1,
+                                margin = "sm"
+                            }
+                        }
+                    }
+                },
+                paddingAll = "20px"
+            }
+        };
+
+        return JsonSerializer.Serialize(flexMessage, new JsonSerializerOptions
+        {
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            WriteIndented = false
+        });
     }
 
     private async Task<bool> SubmitToHrSystem(WorkingTimeSession session, string userId, CancellationToken cancellationToken)
