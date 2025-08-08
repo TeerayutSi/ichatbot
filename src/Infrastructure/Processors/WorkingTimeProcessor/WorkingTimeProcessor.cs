@@ -933,9 +933,9 @@ public class WorkingTimeProcessor : ILineMessageProcessor
             Location = session.SelectedOfficeName ?? "Unknown Location", // AgencyName
             IpAddress = "0.0.0.0", // IP address is not available in the session data
             OrganizationName = session.SelectedOfficeName ?? "Unknown Location", // Organization name
-            //ProjectName = "", // Project name
             FileName = fileName, // generate picture file name
-            Base64 = base64Photo // take a photo byte[] > base64
+            Base64 = base64Photo, // take a photo byte[] > base64
+            Type = session.Type == WorkingTimeType.CheckIn ? "checkin" : "checkout", // Type of action
         };
 
         try

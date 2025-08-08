@@ -98,4 +98,5 @@ public class HrSystemCheckInCheckOutRequest
     public string ProjectName { get; set; }
     public string FileName { get; set; }
     public string Base64 { get; set; }
+    public string Type { get; set; }
 }
