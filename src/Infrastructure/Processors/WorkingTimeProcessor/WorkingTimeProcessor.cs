@@ -79,7 +79,9 @@ public class WorkingTimeProcessor : ILineMessageProcessor
             if (postbackData.StartsWith("confirm_email_registration_"))
             {
                 var email = postbackData.Substring("confirm_email_registration_".Length);
-                return await HandleEmailRegistration(email, userId, replyToken, cancellationToken);
+                // Clean email: trim whitespace and convert to lowercase
+                var cleanEmail = email.Trim().ToLower();
+                return await HandleEmailRegistration(cleanEmail, userId, replyToken, cancellationToken);
             }
             
             // Handle agency selection
@@ -926,12 +928,12 @@ public class WorkingTimeProcessor : ILineMessageProcessor
         // Prepare data for HR System API
         var hrSystemRequest = new HrSystemCheckInCheckOutRequest
         {
-            UserId = "866d7125-7f74-44b2-a4d7-8f854787c144", // Using actual user ID instead of LINE OA user ID
+            UserId = userId, // Using actual user ID instead of LINE OA user ID
             LatLong = $"{session.SelectedOfficeLatitude ?? session.Latitude ?? 0},{session.SelectedOfficeLongitude ?? session.Longitude ?? 0}", // Latitude Longitude
             Location = session.SelectedOfficeName ?? "Unknown Location", // AgencyName
             IpAddress = "0.0.0.0", // IP address is not available in the session data
             OrganizationName = session.SelectedOfficeName ?? "Unknown Location", // Organization name
-            ProjectName = "", // Project name
+            //ProjectName = "", // Project name
             FileName = fileName, // generate picture file name
             Base64 = base64Photo // take a photo byte[] > base64
         };
@@ -1011,6 +1013,9 @@ public class WorkingTimeProcessor : ILineMessageProcessor
     /// <returns>LineReplyStatus with confirmation flex message</returns>
     private async Task<LineReplyStatus> ShowEmailConfirmation(string email, string lineUserId, string replyToken, CancellationToken cancellationToken)
     {
+        // Clean email: trim whitespace and convert to lowercase
+        var cleanEmail = email.Trim().ToLower();
+        
         // Create a flex message with confirmation button
         var flexMessage = new
         {
@@ -1039,7 +1044,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                             new
                             {
                                 type = "text",
-                                text = email,
+                                text = cleanEmail,
                                 wrap = true,
                                 color = "#007bff",
                                 size = "xl",
@@ -1063,7 +1068,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                         {
                             type = "postback",
                             label = "ยืนยัน",
-                            data = $"confirm_email_registration_{email}"
+                            data = $"confirm_email_registration_{cleanEmail}"
                         },
                         style = "primary"
                     }
@@ -1118,11 +1123,14 @@ public class WorkingTimeProcessor : ILineMessageProcessor
             // Get the base API URL and construct the RegisterLinebotUserId endpoint
             var registerUrl = $"{baseUrl.TrimEnd('/')}/RegisterLinebotUserId";
             
+            // Clean email: trim whitespace and convert to lowercase
+            var cleanEmail = email.Trim().ToLower();
+            
             // Prepare the request data
             var requestData = new
             {
                 LinebotUserId = lineUserId,
-                Email = email
+                Email = cleanEmail
             };
             
             // Create JSON content
