@@ -53,88 +53,197 @@ public class LineWebhookCommand : IRequest<LineSendResponse?>
 
         public async Task<LineSendResponse?> Handle(LineWebhookCommand request, CancellationToken cancellationToken)
         {
-            Chatbot chatbot = await _context.Chatbots
-                .Include(c => c.ChatbotPlugins)
-                .Include(c => c.PredefineMessages)
-                .Where(c => c.Id == request.ChatbotId)
-                .FirstAsync(cancellationToken);
-
-            List<string> plugins = chatbot.ChatbotPlugins.Select(c => c.PluginName).ToList();
-            foreach (Event evt in request.Events)
+            try
             {
-                _logger.LogWarning("UserId {UserId} Type {Type} Source {Source} Message {Message}",
-                    evt.Source?.UserId, evt.Type, evt.Source?.Type, evt.Message?.Text);
-                string userId = evt.Source?.GroupId ?? evt.Source?.UserId ?? "";
-                string replyToken = evt.ReplyToken;
-                string? sourceMessageId = evt.Message?.Id;
-                if (evt.Type == "postback")
+                _logger.LogInformation("Starting to process LINE webhook for chatbot {ChatbotId}", request.ChatbotId);
+                
+                Chatbot? chatbot = await _context.Chatbots
+                    .Include(c => c.ChatbotPlugins)
+                    .Include(c => c.PredefineMessages)
+                    .Where(c => c.Id == request.ChatbotId)
+                    .FirstOrDefaultAsync(cancellationToken);
+        
+                // If chatbot is not found, log and return null
+                if (chatbot == null)
                 {
-                    LineReplyStatus? toReturn =
-                        await ProcessPostbackEvent(evt, chatbot, plugins, userId, replyToken, cancellationToken);
-                    return await SendReply(cancellationToken, toReturn, replyToken, chatbot);
+                    _logger.LogWarning("Chatbot with ID {ChatbotId} not found", request.ChatbotId);
+                    return null;
                 }
-
-                if (evt.Type == "message")
+                
+                _logger.LogInformation("Found chatbot {ChatbotId} with {PluginCount} plugins", request.ChatbotId, chatbot.ChatbotPlugins.Count);
+        
+                List<string> plugins = chatbot.ChatbotPlugins.Select(c => c.PluginName).ToList();
+                
+                // Process each event in the webhook
+                _logger.LogInformation("Processing {EventCount} events for chatbot {ChatbotId}", request.Events.Count, request.ChatbotId);
+                foreach (Event evt in request.Events)
                 {
-                    if (evt.Message?.Type == "text")
+                    try
                     {
-                        LineReplyStatus? toReturn = await ProcessTextMessageEvent(evt, _chatCompletion, chatbot,
-                            plugins, userId, replyToken, request.ChatbotId, sourceMessageId,
-                            cancellationToken);
-
-                        var result = await SendReply(cancellationToken, toReturn, replyToken, chatbot);
-                        await PostProcessMessage(plugins, sourceMessageId, result, false, cancellationToken);
-                    }
-
-                    if (evt.Message?.Type == "sticker" && evt.Source?.Type == "user")
-                    {
-                        LineReplyStatus toReturn = StickerProcess(replyToken, cancellationToken);
-                        return await SendReply(cancellationToken, toReturn, replyToken, chatbot);
-                    }
-
-                    if (evt.Message?.Type is "image" or "file" or "video" or "audio")
-                    {
-                        await HandleMediaMessage(evt, chatbot, plugins, userId, replyToken,
-                            cancellationToken);
-                    }
-
-                    if (evt.Message?.Type == "location")
-                    {
-                        LineReplyStatus? toReturn = null;
-                        if (chatbot.LineChannelAccessToken != null)
+                        _logger.LogWarning("UserId {UserId} Type {Type} Source {Source} Message {Message}",
+                            evt.Source?.UserId, evt.Type, evt.Source?.Type, evt.Message?.Text);
+                        string userId = evt.Source?.GroupId ?? evt.Source?.UserId ?? "";
+                        string replyToken = evt.ReplyToken;
+                        string? sourceMessageId = evt.Message?.Id;
+                        
+                        if (evt.Type == "postback")
                         {
-                            double? latitude = evt.Message?.Latitude;
-                            double? longitude = evt.Message?.Longitude;
-                            string? address = evt.Message?.Address;
-
-                            if (latitude.HasValue && longitude.HasValue)
+                            try
                             {
-                                foreach (ILineMessageProcessor process in _messageProcessors)
+                                _logger.LogInformation("Processing postback event for chatbot {ChatbotId}", request.ChatbotId);
+                                LineReplyStatus? toReturn =
+                                    await ProcessPostbackEvent(evt, chatbot, plugins, userId, replyToken, cancellationToken);
+                                _logger.LogInformation("Postback event processed for chatbot {ChatbotId}. Result status: {Status}", request.ChatbotId, toReturn?.Status);
+                                return await SendReply(cancellationToken, toReturn, replyToken, chatbot);
+                            }
+                            catch (Exception postbackEx)
+                            {
+                                _logger.LogError(postbackEx, "Error processing postback event for chatbot {ChatbotId}", request.ChatbotId);
+                                // Continue to next event rather than failing completely
+                                continue;
+                            }
+                        }
+        
+                        if (evt.Type == "message")
+                        {
+                            try
+                            {
+                                if (evt.Message?.Type == "text")
                                 {
-                                    if (!plugins.Contains(process.Name))
+                                    _logger.LogInformation("Processing text message event for chatbot {ChatbotId}", request.ChatbotId);
+                                    LineReplyStatus? toReturn = await ProcessTextMessageEvent(evt, _chatCompletion, chatbot,
+                                        plugins, userId, replyToken, request.ChatbotId, sourceMessageId,
+                                        cancellationToken);
+                                    _logger.LogInformation("Text message event processed for chatbot {ChatbotId}. Result status: {Status}", request.ChatbotId, toReturn?.Status);
+        
+                                    var result = await SendReply(cancellationToken, toReturn, replyToken, chatbot);
+                                    _logger.LogInformation("Reply sent for text message event for chatbot {ChatbotId}. Result status: {Status}", request.ChatbotId, result?.Status);
+                                    try
                                     {
-                                        continue;
+                                        await PostProcessMessage(plugins, sourceMessageId, result, false, cancellationToken);
+                                        _logger.LogInformation("Post-processing completed for text message event for chatbot {ChatbotId}", request.ChatbotId);
                                     }
-
-                                    var result = await process.ProcessLocationAsync(
-                                        evt, chatbot.Id, latitude.Value, longitude.Value, address, userId, replyToken, cancellationToken);
-
-                                    if (result.Status is 200 or 201)
+                                    catch (Exception postProcessEx)
                                     {
-                                        toReturn = result;
-                                        break;
+                                        _logger.LogError(postProcessEx, "Error post-processing text message for chatbot {ChatbotId}", request.ChatbotId);
+                                        // Continue without failing
                                     }
                                 }
                             }
+                            catch (Exception messageEx)
+                            {
+                                _logger.LogError(messageEx, "Error processing text message event for chatbot {ChatbotId}", request.ChatbotId);
+                                // Continue to next event rather than failing completely
+                                continue;
+                            }
+        
+                            try
+                            {
+                                if (evt.Message?.Type == "sticker" && evt.Source?.Type == "user")
+                                {
+                                    _logger.LogInformation("Processing sticker event for chatbot {ChatbotId}", request.ChatbotId);
+                                    LineReplyStatus toReturn = StickerProcess(replyToken, cancellationToken);
+                                    _logger.LogInformation("Sticker event processed for chatbot {ChatbotId}. Result status: {Status}", request.ChatbotId, toReturn.Status);
+                                    return await SendReply(cancellationToken, toReturn, replyToken, chatbot);
+                                }
+                            }
+                            catch (Exception stickerEx)
+                            {
+                                _logger.LogError(stickerEx, "Error processing sticker event for chatbot {ChatbotId}", request.ChatbotId);
+                                // Continue to next event rather than failing completely
+                                continue;
+                            }
+        
+                            try
+                            {
+                                if (evt.Message?.Type is "image" or "file" or "video" or "audio")
+                                {
+                                    _logger.LogInformation("Processing media event ({MediaType}) for chatbot {ChatbotId}", evt.Message?.Type, request.ChatbotId);
+                                    await HandleMediaMessage(evt, chatbot, plugins, userId, replyToken,
+                                        cancellationToken);
+                                    _logger.LogInformation("Media event processed for chatbot {ChatbotId}", request.ChatbotId);
+                                }
+                            }
+                            catch (Exception mediaEx)
+                            {
+                                _logger.LogError(mediaEx, "Error processing media event for chatbot {ChatbotId}", request.ChatbotId);
+                                // Continue to next event rather than failing completely
+                                continue;
+                            }
+        
+                            try
+                            {
+                                if (evt.Message?.Type == "location")
+                                {
+                                    _logger.LogInformation("Processing location event for chatbot {ChatbotId}", request.ChatbotId);
+                                    LineReplyStatus? toReturn = null;
+                                    if (chatbot.LineChannelAccessToken != null)
+                                    {
+                                        double? latitude = evt.Message?.Latitude;
+                                        double? longitude = evt.Message?.Longitude;
+                                        string? address = evt.Message?.Address;
+        
+                                        if (latitude.HasValue && longitude.HasValue)
+                                        {
+                                            foreach (ILineMessageProcessor process in _messageProcessors)
+                                            {
+                                                if (!plugins.Contains(process.Name))
+                                                {
+                                                    continue;
+                                                }
+        
+                                                try
+                                                {
+                                                    var result = await process.ProcessLocationAsync(
+                                                        evt, chatbot.Id, latitude.Value, longitude.Value, address, userId, replyToken, cancellationToken);
+        
+                                                    if (result.Status is 200 or 201)
+                                                    {
+                                                        toReturn = result;
+                                                        break;
+                                                    }
+                                                }
+                                                catch (Exception processorEx)
+                                                {
+                                                    _logger.LogError(processorEx, "Error in location processor {ProcessorName} for chatbot {ChatbotId}", process.Name, request.ChatbotId);
+                                                    // Continue to next processor
+                                                    continue;
+                                                }
+                                            }
+                                        }
+                                    }
+        
+                                    var sendResult = await SendReply(cancellationToken, toReturn, replyToken, chatbot);
+                                    _logger.LogInformation("Location event processed for chatbot {ChatbotId}. Result status: {Status}", request.ChatbotId, sendResult?.Status);
+                                    // No post-processing for location by default
+                                }
+                            }
+                            catch (Exception locationEx)
+                            {
+                                _logger.LogError(locationEx, "Error processing location event for chatbot {ChatbotId}", request.ChatbotId);
+                                // Continue to next event rather than failing completely
+                                continue;
+                            }
                         }
-
-                        var sendResult = await SendReply(cancellationToken, toReturn, replyToken, chatbot);
-                        // No post-processing for location by default
+                    }
+                    catch (Exception eventEx)
+                    {
+                        _logger.LogError(eventEx, "Error processing event for chatbot {ChatbotId}", request.ChatbotId);
+                        // Continue to next event rather than failing completely
+                        continue;
                     }
                 }
+        
+                _logger.LogInformation("Completed processing LINE webhook for chatbot {ChatbotId}", request.ChatbotId);
+                return null;
             }
-
-            return null;
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing LINE webhook for chatbot {ChatbotId}", request.ChatbotId);
+                // Return null to indicate that we've handled the error
+                // The endpoint will still return 200 OK to acknowledge receipt
+                return null;
+            }
         }
 
         // ChatReport helper removed
@@ -476,9 +585,20 @@ public class LineWebhookCommand : IRequest<LineSendResponse?>
                 {
                     var response = await _lineMessenger.SendMessage(chatbot, toReturn.ReplyMessage, cancellationToken);
                     response.ContentResults = toReturn.ContentResults;
+                    
+                    // Log any authentication errors but still return null to ensure webhook returns 200 OK
+                    if (response.Status == 401)
+                    {
+                        _logger.LogError("LINE API returned 401 Unauthorized for chatbot {ChatbotId}. Check LineChannelAccessToken.", chatbot.Id);
+                    }
+                    else if (response.Status >= 400)
+                    {
+                        _logger.LogError("LINE API returned error {StatusCode} for chatbot {ChatbotId}: {Error}", response.Status, chatbot.Id, response.Error);
+                    }
+                    
                     return response;
                 }
-
+        
                 if (toReturn is { Status: 201, Raw: not null })
                 {
                     string template =
@@ -487,16 +607,28 @@ public class LineWebhookCommand : IRequest<LineSendResponse?>
                     template = template.Replace("%json%", toReturn.Raw);
                     var response = await _lineMessenger.SendRawMessage(chatbot, template, cancellationToken);
                     response.ContentResults = toReturn.ContentResults;
+                    
+                    // Log any authentication errors but still return null to ensure webhook returns 200 OK
+                    if (response.Status == 401)
+                    {
+                        _logger.LogError("LINE API returned 401 Unauthorized for chatbot {ChatbotId}. Check LineChannelAccessToken.", chatbot.Id);
+                    }
+                    else if (response.Status >= 400)
+                    {
+                        _logger.LogError("LINE API returned error {StatusCode} for chatbot {ChatbotId}: {Error}", response.Status, chatbot.Id, response.Error);
+                    }
+                    
                     return response;
                 }
-
+        
                 await _context.SaveChangesAsync(cancellationToken);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // ignored
+                _logger.LogError(ex, "Error sending reply for chatbot {ChatbotId}", chatbot.Id);
+                // Don't ignore the exception, but still return null to indicate no response to send
             }
-
+        
             return null;
         }
 

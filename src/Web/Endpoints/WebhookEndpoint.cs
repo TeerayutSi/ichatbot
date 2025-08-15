@@ -6,6 +6,7 @@ using ChatbotApi.Application.Webhook.Commands.LineWebhookCommand;
 using ChatbotApi.Application.Webhook.Commands.OpenAIWebhookCommand;
 using ChatbotApi.Application.Webhook.Queries.GetFacebookSubscribeQuery;
 using ChatbotApi.Domain.Entities;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Primitives;
 
 namespace ChatbotApi.Web.Endpoints;
@@ -115,25 +116,86 @@ public class WebhookEndpoint : EndpointGroupBase
 
     private async Task<IResult> Line(ISender sender, int chatBotId, HttpContext httpContext, IApplicationDbContext context)
     {
-        using var reader = new StreamReader(httpContext.Request.Body);
-        var requestBody = await reader.ReadToEndAsync();
-
-        await context.IncomingRequests.AddAsync(new IncomingRequest()
+        try
         {
-            Raw = requestBody
-        });
-        await context.SaveChangesAsync(CancellationToken.None);
-
-        // Deserialize the request body into LineWebhookCommand object
-        var command = JsonSerializer.Deserialize<LineWebhookCommand>(requestBody);
-
-        if (command == null || command.Destination == null)
-        {
-            return Results.BadRequest("Not line webhook");
+            // Log the start of webhook processing
+            Console.WriteLine($"Starting LINE webhook processing for chatbot {chatBotId} at {DateTime.UtcNow}");
+            
+            using var reader = new StreamReader(httpContext.Request.Body);
+            var requestBody = await reader.ReadToEndAsync();
+    
+            // Log the incoming request
+            Console.WriteLine($"Received LINE webhook for chatbot {chatBotId}. Request body length: {requestBody.Length}");
+    
+            // Always save the incoming request for debugging purposes
+            try
+            {
+                await context.IncomingRequests.AddAsync(new IncomingRequest()
+                {
+                    Raw = requestBody
+                });
+                await context.SaveChangesAsync(CancellationToken.None);
+                Console.WriteLine($"Saved incoming request for chatbot {chatBotId} to database");
+            }
+            catch (Exception dbEx)
+            {
+                // Log database error but don't fail the webhook
+                Console.WriteLine($"Error saving incoming request for chatbot {chatBotId}: {dbEx}");
+            }
+    
+            // Deserialize the request body into LineWebhookCommand object
+            LineWebhookCommand? command = null;
+            try
+            {
+                command = JsonSerializer.Deserialize<LineWebhookCommand>(requestBody);
+                Console.WriteLine($"Deserialized LINE webhook for chatbot {chatBotId}. Events count: {command?.Events?.Count ?? 0}");
+            }
+            catch (JsonException ex)
+            {
+                Console.WriteLine($"Error deserializing LINE webhook for chatbot {chatBotId}: {ex}");
+                Console.WriteLine($"Request body: {requestBody}");
+                // Still return 200 OK to acknowledge receipt of the webhook
+                return Results.Ok();
+            }
+    
+            if (command == null || command.Destination == null)
+            {
+                Console.WriteLine($"Invalid LINE webhook for chatbot {chatBotId}: command or destination is null");
+                Console.WriteLine($"Request body: {requestBody}");
+                return Results.Ok(); // Still acknowledge receipt
+            }
+    
+            command.ChatbotId = chatBotId;
+            
+            // Process the webhook command
+            try
+            {
+                Console.WriteLine($"Sending command to MediatR for chatbot {chatBotId}");
+                var result = await sender.Send(command);
+                Console.WriteLine($"Command processed for chatbot {chatBotId}. Result: {result}");
+            }
+            catch (Exception sendEx)
+            {
+                // Log the exception but still return 200 OK
+                Console.WriteLine($"Error processing LINE webhook command for chatbot {chatBotId}: {sendEx}");
+                Console.WriteLine($"Command: {System.Text.Json.JsonSerializer.Serialize(command)}");
+            }
+            
+            // Log successful completion
+            Console.WriteLine($"Completed LINE webhook processing for chatbot {chatBotId}");
+            
+            // Always return 200 OK to acknowledge receipt by LINE platform
+            return Results.Ok();
         }
-
-        command.ChatbotId = chatBotId;
-        await sender.Send(command);
-        return Results.Ok();
+        catch (Exception ex)
+        {
+            // Log the exception for debugging purposes
+            Console.WriteLine($"Unexpected error processing LINE webhook for chatbot {chatBotId}: {ex}");
+            Console.WriteLine($"Stack trace: {ex.StackTrace}");
+            
+            // Always return 200 OK to LINE platform to acknowledge receipt
+            // Even if there's an error processing the message, we should acknowledge receipt
+            return Results.Ok();
+        }
     }
 }
