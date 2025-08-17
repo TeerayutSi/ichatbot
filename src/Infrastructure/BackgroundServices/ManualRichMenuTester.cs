@@ -114,12 +114,6 @@ public class ManualRichMenuTester
                 Selected = _configuration.GetValue<bool>("LineRichMenu:Selected", true),
                 Name = _configuration.GetValue<string>("LineRichMenu:Name", "WorkingTimeMenu"),
                 ChatBarText = _configuration.GetValue<string>("LineRichMenu:ChatBarText", "เมนูการทำงาน"),
-                Style = new RichMenuStyle
-                {
-                    BackgroundColor = "#FFFFFF",
-                    Separator = true,
-                    SeparatorColor = "#000000"
-                },
                 Areas = new System.Collections.Generic.List<RichMenuArea>
                 {
                     // Row 1: Registration button (full width)
@@ -179,6 +173,16 @@ public class ManualRichMenuTester
             var json = JsonSerializer.Serialize(richMenu);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
 
+            _logger.LogInformation("Rich Menu JSON: {RichMenuJson}", json);
+            _logger.LogInformation("Rich Menu Areas Count: {AreasCount}", richMenu.Areas.Count);
+            foreach (var area in richMenu.Areas)
+            {
+                _logger.LogInformation("Area Bounds: X={X}, Y={Y}, Width={Width}, Height={Height}",
+                    area.Bounds.X, area.Bounds.Y, area.Bounds.Width, area.Bounds.Height);
+                _logger.LogInformation("Area Action: Type={Type}, Text={Text}, Label={Label}",
+                    area.Action.Type, area.Action.Text, area.Action.Label);
+            }
+            
             var response = await _httpClient.PostAsync("https://api.line.me/v2/bot/richmenu", content);
             
             if (response.IsSuccessStatusCode)

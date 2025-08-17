@@ -18,9 +18,6 @@ public class LineRichMenu
 
     [JsonPropertyName("areas")]
     public List<RichMenuArea> Areas { get; set; }
-    
-    [JsonPropertyName("style")]
-    public RichMenuStyle? Style { get; set; }
 }
 
 public class RichMenuSize
@@ -69,19 +66,4 @@ public class RichMenuAction
 
     [JsonPropertyName("data")]
     public string? Data { get; set; }
-}
-
-/// <summary>
-/// Additional properties for Rich Menu styling (optional)
-/// </summary>
-public class RichMenuStyle
-{
-    [JsonPropertyName("backgroundColor")]
-    public string? BackgroundColor { get; set; }
-    
-    [JsonPropertyName("separator")]
-    public bool? Separator { get; set; }
-    
-    [JsonPropertyName("separatorColor")]
-    public string? SeparatorColor { get; set; }
 }
