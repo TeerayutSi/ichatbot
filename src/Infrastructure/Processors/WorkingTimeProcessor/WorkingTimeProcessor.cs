@@ -1130,35 +1130,6 @@ public class WorkingTimeProcessor : ILineMessageProcessor
         // Create file name with timestamp
         var fileName = $"checkin_checkout_{DateTime.UtcNow:yyyyMMddHHmmss}.{fileExtension}";
 
-        // Get the actual user ID from the ApplicationUser entity
-        // The userId parameter is the LINE OA user ID, but we need the actual user ID
-        var actualUserId = userId; // Default to the provided userId
-        try
-        {
-            // Try to find a user whose LineAccessToken matches the provided userId (LINE OA user ID)
-            // Using AsNoTracking for better performance since we only need to read data
-            var user = await _context.Users
-                .AsNoTracking()
-                .Where(u => u.LineAccessToken == userId)
-                .Select(u => new { u.Id }) // Only select the Id to improve performance
-                .FirstOrDefaultAsync(cancellationToken);
-            
-            // If we found a user with a matching LineAccessToken, use their actual ID
-            if (user != null)
-            {
-                actualUserId = user.Id;
-                _logger.LogInformation("Mapped LINE OA user ID {LineUserId} to actual user ID {ActualUserId}", userId, actualUserId);
-            }
-            else
-            {
-                _logger.LogWarning("No user found with LineAccessToken matching LINE OA user ID {LineUserId}. Using LINE OA user ID as fallback.", userId);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Error while trying to map LINE OA user ID {LineUserId} to actual user ID. Using provided userId as fallback.", userId);
-        }
-
         // Prepare data for HR System API
         var hrSystemRequest = new HrSystemCheckInCheckOutRequest
         {
@@ -1193,7 +1164,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
 
             if (response.IsSuccessStatusCode)
             {
-                _logger.LogInformation("Successfully submitted working time data for user {UserId}", actualUserId);
+                _logger.LogInformation("Successfully submitted working time data for user {UserId}", userId);
                 return true;
             }
             else
@@ -1206,7 +1177,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error submitting working time data to HR System API for user {UserId}", actualUserId);
+            _logger.LogError(ex, "Error submitting working time data to HR System API for user {UserId}", userId);
             return false;
         }
     }
