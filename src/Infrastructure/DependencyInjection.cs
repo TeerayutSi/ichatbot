@@ -169,6 +169,13 @@ public static class DependencyInjection
 
         // Register EmailConsumerService to process emails using ILineEmailProcessor implementations
         services.AddHostedService<EmailConsumerService>();
+        
+        // Register RichMenuBackgroundServiceV3 to create Rich Menu at startup
+        services.AddHostedService<RichMenuBackgroundServiceV3>();
+        
+        // Register TestRichMenuCreation for manual testing (uncomment to enable)
+        // services.AddHostedService<TestRichMenuCreation>();
+        
         // add AppSetting
 
         AppSetting? appSetting = configuration.GetSection("AppSettings").Get<AppSetting>();
