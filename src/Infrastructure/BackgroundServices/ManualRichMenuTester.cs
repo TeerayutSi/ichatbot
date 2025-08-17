@@ -6,6 +6,8 @@ using System.Threading.Tasks;
 using ChatbotApi.Application.Common.Models;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using System.Drawing;
+using System.Drawing.Imaging;
 
 namespace ChatbotApi.Infrastructure.BackgroundServices;
 
@@ -48,13 +50,42 @@ public class ManualRichMenuTester
 
             // Step 2: Upload the background image
             var imagePath = _configuration["LineRichMenu:BackgroundImagePath"];
-            if (!string.IsNullOrEmpty(imagePath) && System.IO.File.Exists(imagePath))
+            if (!string.IsNullOrEmpty(imagePath))
             {
-                await UploadRichMenuImageAsync(richMenuId, imagePath);
+                // Resolve relative path to full path
+                string fullPath = System.IO.Path.IsPathRooted(imagePath) ? imagePath : System.IO.Path.Combine(AppContext.BaseDirectory, "..", "..", "..", imagePath);
+                
+                // If the resolved path is still not rooted (e.g., relative path that doesn't resolve properly), try to resolve it differently
+                if (!System.IO.Path.IsPathRooted(fullPath))
+                {
+                    fullPath = System.IO.Path.GetFullPath(fullPath);
+                }
+                
+                // Create composite image if it doesn't exist
+                if (!System.IO.File.Exists(fullPath))
+                {
+                    _logger.LogInformation("Background image does not exist, creating composite image at {ImagePath}", fullPath);
+                    await CreateCompositeRichMenuImageAsync(fullPath);
+                    
+                    // Check again if the composite image was created successfully
+                    if (!System.IO.File.Exists(fullPath))
+                    {
+                        _logger.LogWarning("Failed to create composite image at {ImagePath}", fullPath);
+                    }
+                }
+                
+                if (System.IO.File.Exists(fullPath))
+                {
+                    await UploadRichMenuImageAsync(richMenuId, fullPath);
+                }
+                else
+                {
+                    _logger.LogWarning("Background image file does not exist at path: {ImagePath}", fullPath);
+                }
             }
             else
             {
-                _logger.LogWarning("Background image path is not configured or file does not exist");
+                _logger.LogWarning("Background image path is not configured");
             }
 
             // Step 3: Link the Rich Menu to all users (set as default)
@@ -83,6 +114,12 @@ public class ManualRichMenuTester
                 Selected = _configuration.GetValue<bool>("LineRichMenu:Selected", true),
                 Name = _configuration.GetValue<string>("LineRichMenu:Name", "WorkingTimeMenu"),
                 ChatBarText = _configuration.GetValue<string>("LineRichMenu:ChatBarText", "เมนูการทำงาน"),
+                Style = new RichMenuStyle
+                {
+                    BackgroundColor = "#FFFFFF",
+                    Separator = true,
+                    SeparatorColor = "#000000"
+                },
                 Areas = new System.Collections.Generic.List<RichMenuArea>
                 {
                     // Row 1: Registration button (full width)
@@ -173,27 +210,35 @@ public class ManualRichMenuTester
     {
         try
         {
-            var fileBytes = await System.IO.File.ReadAllBytesAsync(imagePath);
-            var content = new MultipartFormDataContent();
-            var fileContent = new ByteArrayContent(fileBytes);
-            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/png");
-            content.Add(fileContent, "image", "richmenu.png");
-            
-            // Remove the automatically added boundary parameter from Content-Type header
-            // LINE API doesn't accept the boundary parameter in the content type
-            var contentTypeHeader = content.Headers.ContentType;
-            if (contentTypeHeader != null)
+            _logger.LogInformation("Reading image file from {ImagePath}", imagePath);
+            if (!System.IO.File.Exists(imagePath))
             {
-                content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("multipart/form-data");
+                _logger.LogError("Image file does not exist at path: {ImagePath}", imagePath);
+                return;
             }
+            
+            var fileBytes = await System.IO.File.ReadAllBytesAsync(imagePath);
+            _logger.LogInformation("Image file read successfully, size: {FileSize} bytes", fileBytes.Length);
+            
+            // Create ByteArrayContent directly without multipart form data
+            var content = new ByteArrayContent(fileBytes);
+            content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/png");
+            
+            // Log the content type for debugging
+            _logger.LogInformation("Content-Type header: {ContentType}", content.Headers.ContentType?.ToString() ?? "null");
+            _logger.LogInformation("Content-Length: {ContentLength}", content.Headers.ContentLength?.ToString() ?? "null");
 
             var response = await _httpClient.PostAsync($"https://api-data.line.me/v2/bot/richmenu/{richMenuId}/content", content);
             
             if (!response.IsSuccessStatusCode)
             {
                 var errorContent = await response.Content.ReadAsStringAsync();
-                _logger.LogError("Failed to upload Rich Menu image. Status: {StatusCode}, Error: {Error}", 
+                _logger.LogError("Failed to upload Rich Menu image. Status: {StatusCode}, Error: {Error}",
                     response.StatusCode, errorContent);
+                
+                // Log additional details for debugging
+                _logger.LogError("Request URL: {Url}", $"https://api-data.line.me/v2/bot/richmenu/{richMenuId}/content");
+                _logger.LogError("Response Headers: {Headers}", string.Join(", ", response.Headers.Select(h => $"{h.Key}: {string.Join(", ", h.Value)}")));
             }
             else
             {
@@ -203,6 +248,85 @@ public class ManualRichMenuTester
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error uploading Rich Menu image");
+        }
+    }
+    
+    private async Task CreateCompositeRichMenuImageAsync(string outputPath)
+    {
+        try
+        {
+            _logger.LogInformation("Creating composite Rich Menu image at {OutputPath}", outputPath);
+            
+            // Get the paths to the individual images from configuration or use defaults
+            var registerImagePath = _configuration["LineRichMenu:RegisterButtonImagePath"] ?? System.IO.Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "src", "Asset", "Images", "Register_2500x843(1).png");
+            var checkInImagePath = _configuration["LineRichMenu:CheckInButtonImagePath"] ?? System.IO.Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "src", "Asset", "Images", "Check-in_1250x843(2).png");
+            var checkOutImagePath = _configuration["LineRichMenu:CheckOutButtonImagePath"] ?? System.IO.Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "src", "Asset", "Images", "Check-out_1250x843(2).png");
+
+            _logger.LogInformation("Looking for images at paths: Register={RegisterPath}, CheckIn={CheckInPath}, CheckOut={CheckOutPath}",
+                registerImagePath, checkInImagePath, checkOutImagePath);
+
+            // Verify that all required images exist
+            if (!System.IO.File.Exists(registerImagePath) || !System.IO.File.Exists(checkInImagePath) || !System.IO.File.Exists(checkOutImagePath))
+            {
+                _logger.LogWarning("One or more required images are missing for composite image creation");
+                if (!System.IO.File.Exists(registerImagePath))
+                    _logger.LogWarning("Register image not found at {Path}", registerImagePath);
+                if (!System.IO.File.Exists(checkInImagePath))
+                    _logger.LogWarning("Check-in image not found at {Path}", checkInImagePath);
+                if (!System.IO.File.Exists(checkOutImagePath))
+                    _logger.LogWarning("Check-out image not found at {Path}", checkOutImagePath);
+                return;
+            }
+
+            // Create a new bitmap with the required Rich Menu dimensions (2500x1686)
+            using (var compositeImage = new System.Drawing.Bitmap(2500, 1686))
+            using (var graphics = System.Drawing.Graphics.FromImage(compositeImage))
+            {
+                // Draw the registration image at the top (full width)
+                using (var registerImage = System.Drawing.Image.FromFile(registerImagePath))
+                {
+                    graphics.DrawImage(registerImage, new System.Drawing.Rectangle(0, 0, 2500, 843));
+                }
+
+                // Draw the check-in image in the bottom left
+                using (var checkInImage = System.Drawing.Image.FromFile(checkInImagePath))
+                {
+                    graphics.DrawImage(checkInImage, new System.Drawing.Rectangle(0, 843, 1250, 843));
+                }
+
+                // Draw the check-out image in the bottom right
+                using (var checkOutImage = System.Drawing.Image.FromFile(checkOutImagePath))
+                {
+                    graphics.DrawImage(checkOutImage, new System.Drawing.Rectangle(1250, 843, 1250, 843));
+                }
+
+                // Ensure the directory exists
+                var outputDirectory = System.IO.Path.GetDirectoryName(outputPath);
+                if (!string.IsNullOrEmpty(outputDirectory) && !System.IO.Directory.Exists(outputDirectory))
+                {
+                    System.IO.Directory.CreateDirectory(outputDirectory);
+                }
+
+                // Save the composite image as PNG
+                _logger.LogInformation("Saving composite image to {OutputPath}", outputPath);
+                compositeImage.Save(outputPath, System.Drawing.Imaging.ImageFormat.Png);
+                _logger.LogInformation("Successfully created composite Rich Menu image at {ImagePath}", outputPath);
+                
+                // Verify the file was created
+                if (System.IO.File.Exists(outputPath))
+                {
+                    var fileInfo = new System.IO.FileInfo(outputPath);
+                    _logger.LogInformation("Composite image created successfully. File size: {FileSize} bytes", fileInfo.Length);
+                }
+                else
+                {
+                    _logger.LogError("Failed to create composite image at {OutputPath}", outputPath);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating composite Rich Menu image");
         }
     }
 
@@ -215,8 +339,12 @@ public class ManualRichMenuTester
             if (!response.IsSuccessStatusCode)
             {
                 var errorContent = await response.Content.ReadAsStringAsync();
-                _logger.LogError("Failed to set default Rich Menu. Status: {StatusCode}, Error: {Error}", 
+                _logger.LogError("Failed to set default Rich Menu. Status: {StatusCode}, Error: {Error}",
                     response.StatusCode, errorContent);
+                
+                // Log additional details for debugging
+                _logger.LogError("Request URL: {Url}", $"https://api.line.me/v2/bot/user/all/richmenu/{richMenuId}");
+                _logger.LogError("Response Headers: {Headers}", string.Join(", ", response.Headers.Select(h => $"{h.Key}: {string.Join(", ", h.Value)}")));
             }
             else
             {
