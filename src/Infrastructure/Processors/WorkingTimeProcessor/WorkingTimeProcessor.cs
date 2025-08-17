@@ -1,5 +1,7 @@
 using System;
 using System.Globalization;
+using System.IO;
+using SkiaSharp;
 using System.Linq;
 using System.Net.Http.Headers;
 using System.Text;
@@ -1094,8 +1096,22 @@ public class WorkingTimeProcessor : ILineMessageProcessor
             return false;
         }
 
+        // Compress photo before converting to base64 to reduce size for API transmission
+        var photoBytes = session.PhotoContent;
+        if (photoBytes != null && photoBytes.Length > 0)
+        {
+            // Compress the image to a maximum of 1024x1024 with 75% quality
+            var compressedPhoto = CompressImage(photoBytes, 1024, 1024, 75);
+            if (compressedPhoto != null)
+            {
+                photoBytes = compressedPhoto;
+                _logger.LogInformation("Image compressed from {OriginalSize} bytes to {CompressedSize} bytes",
+                    session.PhotoContent.Length, compressedPhoto.Length);
+            }
+        }
+        
         // Convert photo to base64
-        var base64Photo = session.PhotoContent != null ? Convert.ToBase64String(session.PhotoContent) : string.Empty;
+        var base64Photo = photoBytes != null ? Convert.ToBase64String(photoBytes) : string.Empty;
         
         // Determine file extension for the photo
         var fileExtension = "jpg";
@@ -1502,6 +1518,63 @@ public class WorkingTimeProcessor : ILineMessageProcessor
         var lineContent = await lineResponse.Content.ReadAsStringAsync(cancellationToken);
         var json = JsonDocument.Parse(lineContent);
         return json.RootElement.GetProperty("displayName").GetString() ?? string.Empty;
+    }
+
+    /// <summary>
+    /// Compresses an image to reduce its file size while maintaining reasonable quality
+    /// </summary>
+    /// <param name="imageBytes">The original image bytes</param>
+    /// <param name="maxWidth">Maximum width for the compressed image</param>
+    /// <param name="maxHeight">Maximum height for the compressed image</param>
+    /// <param name="quality">JPEG quality (0-100)</param>
+    /// <returns>Compressed image bytes</returns>
+    private byte[]? CompressImage(byte[] imageBytes, int maxWidth = 1024, int maxHeight = 1024, int quality = 75)
+    {
+        try
+        {
+            // Load the image from bytes
+            using var originalImage = SKBitmap.Decode(imageBytes);
+            if (originalImage == null)
+            {
+                _logger.LogWarning("Failed to decode image for compression");
+                return imageBytes; // Return original if decoding fails
+            }
+
+            // Calculate new dimensions maintaining aspect ratio
+            var scale = Math.Min((float)maxWidth / originalImage.Width, (float)maxHeight / originalImage.Height);
+            var newWidth = (int)(originalImage.Width * scale);
+            var newHeight = (int)(originalImage.Height * scale);
+
+            // If image is already smaller than max dimensions, and quality is high enough, return as is
+            if (originalImage.Width <= maxWidth && originalImage.Height <= maxHeight && quality >= 90)
+            {
+                return imageBytes;
+            }
+
+            // Create a new bitmap with the calculated dimensions
+            using var resizedImage = originalImage.Resize(new SKImageInfo(newWidth, newHeight), SKFilterQuality.Medium);
+            if (resizedImage == null)
+            {
+                _logger.LogWarning("Failed to resize image");
+                return imageBytes; // Return original if resizing fails
+            }
+
+            // Encode the resized image with specified quality
+            using var data = resizedImage.Encode(SKEncodedImageFormat.Jpeg, quality);
+            if (data == null)
+            {
+                _logger.LogWarning("Failed to encode compressed image");
+                return imageBytes; // Return original if encoding fails
+            }
+
+            // Return the compressed image bytes
+            return data.ToArray();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error compressing image");
+            return imageBytes; // Return original if compression fails
+        }
     }
 
     #endregion
