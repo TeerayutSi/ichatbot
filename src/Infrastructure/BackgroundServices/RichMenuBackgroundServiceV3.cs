@@ -114,18 +114,33 @@ public class RichMenuBackgroundServiceV3 : BackgroundService
         var httpClient = _httpClientFactory.CreateClient();
         httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {accessToken}");
 
-        // Step 1: Create the Rich Menu
-        _logger.LogInformation("Creating Rich Menu for chatbot {ChatbotId}", chatbot.Id);
-        var richMenuId = await CreateRichMenuAsync(httpClient, stoppingToken);
-        if (string.IsNullOrEmpty(richMenuId))
+        // Check if a Rich Menu already exists for this chatbot
+        _logger.LogInformation("Checking for existing Rich Menu for chatbot {ChatbotId}", chatbot.Id);
+        var existingRichMenuId = await GetExistingRichMenuIdAsync(httpClient, stoppingToken);
+        
+        string richMenuId;
+        bool isNewRichMenu = false;
+        
+        if (!string.IsNullOrEmpty(existingRichMenuId))
         {
-            _logger.LogError("Failed to create Rich Menu for chatbot {ChatbotId}", chatbot.Id);
-            return;
+            _logger.LogInformation("Found existing Rich Menu {RichMenuId} for chatbot {ChatbotId}", existingRichMenuId, chatbot.Id);
+            richMenuId = existingRichMenuId;
+        }
+        else
+        {
+            // Step 1: Create the Rich Menu
+            _logger.LogInformation("Creating Rich Menu for chatbot {ChatbotId}", chatbot.Id);
+            richMenuId = await CreateRichMenuAsync(httpClient, stoppingToken);
+            if (string.IsNullOrEmpty(richMenuId))
+            {
+                _logger.LogError("Failed to create Rich Menu for chatbot {ChatbotId}", chatbot.Id);
+                return;
+            }
+            isNewRichMenu = true;
+            _logger.LogInformation("Successfully created Rich Menu {RichMenuId} for chatbot {ChatbotId}", richMenuId, chatbot.Id);
         }
 
-        _logger.LogInformation("Successfully created Rich Menu {RichMenuId} for chatbot {ChatbotId}", richMenuId, chatbot.Id);
-
-        // Step 2: Upload the background image
+        // Step 2: Upload the background image (only if it's a new Rich Menu)
         var imagePath = _configuration["LineRichMenu:BackgroundImagePath"];
         _logger.LogInformation("Background image path: {ImagePath}", imagePath);
         bool imageUploaded = false;
@@ -160,8 +175,17 @@ public class RichMenuBackgroundServiceV3 : BackgroundService
             
             if (File.Exists(fullPath))
             {
-                _logger.LogInformation("Uploading background image for Rich Menu {RichMenuId}", richMenuId);
-                imageUploaded = await UploadRichMenuImageAsync(httpClient, richMenuId, fullPath, stoppingToken);
+                // Only upload image if it's a new Rich Menu
+                if (isNewRichMenu)
+                {
+                    _logger.LogInformation("Uploading background image for Rich Menu {RichMenuId}", richMenuId);
+                    imageUploaded = await UploadRichMenuImageAsync(httpClient, richMenuId, fullPath, stoppingToken);
+                }
+                else
+                {
+                    _logger.LogInformation("Skipping image upload for existing Rich Menu {RichMenuId}", richMenuId);
+                    imageUploaded = true; // Consider as successful for existing Rich Menu
+                }
             }
             else
             {
@@ -179,7 +203,7 @@ public class RichMenuBackgroundServiceV3 : BackgroundService
         {
             _logger.LogInformation("Setting Rich Menu {RichMenuId} as default for all users", richMenuId);
             await SetDefaultRichMenuAsync(httpClient, richMenuId, stoppingToken);
-            _logger.LogInformation("Successfully created and linked Rich Menu {RichMenuId} for chatbot {ChatbotId}", richMenuId, chatbot.Id);
+            _logger.LogInformation("Successfully linked Rich Menu {RichMenuId} for chatbot {ChatbotId}", richMenuId, chatbot.Id);
         }
         else
         {
@@ -388,6 +412,61 @@ public class RichMenuBackgroundServiceV3 : BackgroundService
         {
             _logger.LogError(ex, "Error setting default Rich Menu");
         }
+    }
+
+    private async Task<string?> GetExistingRichMenuIdAsync(HttpClient httpClient, CancellationToken stoppingToken)
+    {
+        try
+        {
+            // Get list of all Rich Menus
+            var response = await httpClient.GetAsync("https://api.line.me/v2/bot/richmenu/list", stoppingToken);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                var responseContent = await response.Content.ReadAsStringAsync(stoppingToken);
+                _logger.LogInformation("Rich Menu list response: {ResponseContent}", responseContent);
+                
+                // Parse the response to find Rich Menus with our expected name
+                var responseObject = JsonSerializer.Deserialize<JsonElement>(responseContent);
+                
+                if (responseObject.TryGetProperty("richmenus", out var richMenusElement) && richMenusElement.ValueKind == JsonValueKind.Array)
+                {
+                    var expectedName = _configuration.GetValue<string>("LineRichMenu:Name", "WorkingTimeMenu");
+                    
+                    foreach (var richMenuElement in richMenusElement.EnumerateArray())
+                    {
+                        if (richMenuElement.TryGetProperty("name", out var nameElement) &&
+                            nameElement.GetString() == expectedName)
+                        {
+                            if (richMenuElement.TryGetProperty("richMenuId", out var idElement))
+                            {
+                                var richMenuId = idElement.GetString();
+                                _logger.LogInformation("Found existing Rich Menu with matching name: {RichMenuId}", richMenuId);
+                                return richMenuId;
+                            }
+                        }
+                    }
+                    
+                    _logger.LogInformation("No existing Rich Menu found with name: {ExpectedName}", expectedName);
+                }
+                else
+                {
+                    _logger.LogWarning("Rich Menu list response does not contain 'richmenus' array: {ResponseContent}", responseContent);
+                }
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync(stoppingToken);
+                _logger.LogError("Failed to get Rich Menu list. Status: {StatusCode}, Error: {Error}",
+                    response.StatusCode, errorContent);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting existing Rich Menu list");
+        }
+        
+        return null;
     }
 
     private async Task CreateCompositeRichMenuImageAsync(string outputPath, CancellationToken stoppingToken)
