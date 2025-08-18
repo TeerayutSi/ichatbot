@@ -11,6 +11,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
 using LineRichMenu = ChatbotApi.Application.Common.Models.LineRichMenu;
 using RichMenuSize = ChatbotApi.Application.Common.Models.RichMenuSize;
 using RichMenuArea = ChatbotApi.Application.Common.Models.RichMenuArea;
@@ -31,6 +32,7 @@ public class RichMenuProcessor : ILineMessageProcessor
     private readonly IMemoryCache _cache;
     private readonly IDistributedCache _distributedCache;
     private readonly ISystemService _systemService;
+    private readonly IServiceProvider _serviceProvider;
 
     public RichMenuProcessor(
         IApplicationDbContext context,
@@ -39,7 +41,8 @@ public class RichMenuProcessor : ILineMessageProcessor
         IHttpClientFactory httpClientFactory,
         IMemoryCache cache,
         IDistributedCache distributedCache,
-        ISystemService systemService)
+        ISystemService systemService,
+        IServiceProvider serviceProvider)
     {
         _context = context;
         _logger = logger;
@@ -48,6 +51,21 @@ public class RichMenuProcessor : ILineMessageProcessor
         _cache = cache;
         _distributedCache = distributedCache;
         _systemService = systemService;
+        _serviceProvider = serviceProvider;
+    }
+    
+    private ILineMessageProcessor GetEmailRegistrationProcessor()
+    {
+        var processors = _serviceProvider.GetServices<ILineMessageProcessor>();
+        var emailRegistrationProcessor = processors.FirstOrDefault(p => p.Name == Systems.EmailRegistration);
+        
+        // Ensure we found the processor
+        if (emailRegistrationProcessor == null)
+        {
+            throw new InvalidOperationException("EmailRegistrationProcessor not found in registered processors.");
+        }
+        
+        return emailRegistrationProcessor;
     }
 
     public async Task<LineReplyStatus> ProcessLineAsync(LineEvent evt, int chatbotId, string message, string userId, string replyToken,
@@ -108,7 +126,23 @@ public class RichMenuProcessor : ILineMessageProcessor
         // Check if message is an email address (for registration)
         if (IsValidEmail(message))
         {
-            return await ShowEmailConfirmation(message, userId, replyToken, cancellationToken);
+            // Delegate to EmailRegistrationProcessor to process the email input
+            // We need to create a minimal LineEvent for the call
+            var emailEvent = new LineEvent
+            {
+                Type = "message",
+                Message = new LineEventMessage
+                {
+                    Type = "text",
+                    Text = message
+                }
+            };
+            
+            // Call ProcessLineAsync instead of ProcessEmailInputAsync directly
+            var emailRegistrationProcessor = GetEmailRegistrationProcessor();
+            await emailRegistrationProcessor.ProcessLineAsync(emailEvent, 0, message, userId, "", CancellationToken.None);
+            // Return success status without reply message since the processor handles messaging
+            return new LineReplyStatus { Status = 204 }; // 204 No Content - successful but no reply
         }
         
         // Handle "#สร้างเมนู" command
@@ -1127,39 +1161,28 @@ public class RichMenuProcessor : ILineMessageProcessor
     
     private async Task<LineReplyStatus> HandleRegisterAction(string userId, string replyToken, CancellationToken cancellationToken)
     {
-        // First check if user is registered
-        var isRegistered = await CheckUserRegistration(userId, cancellationToken);
+        _logger.LogInformation("HandleRegisterAction called for user {UserId}", userId);
         
-        if (isRegistered)
+        // Delegate to EmailRegistrationProcessor to handle the registration flow
+        // We need to create a minimal LineEvent for the call with a registration command
+        var registerEvent = new LineEvent
         {
-            // User is already registered, show a confirmation message
-            return new LineReplyStatus
+            Type = "message",
+            Message = new LineEventMessage
             {
-                Status = 200,
-                ReplyMessage = new LineReplyMessage
-                {
-                    ReplyToken = replyToken,
-                    Messages = new List<LineMessage>
-                    {
-                        new LineTextMessage("คุณได้ลงทะเบียนเรียบร้อยแล้ว")
-                    }
-                }
-            };
-        }
-        
-        // User is not registered, prompt them to enter their company email
-        return new LineReplyStatus
-        {
-            Status = 200,
-            ReplyMessage = new LineReplyMessage
-            {
-                ReplyToken = replyToken,
-                Messages = new List<LineMessage>
-                {
-                    new LineTextMessage("📧กรุณาลงทะเบียนผูก LineId ของคุณกับอีเมลบริษัท ด้วยการพิมพ์อีเมล xxx@nti.co.th แล้วกดส่งข้อความ")
-                }
+                Type = "text",
+                Text = "ลงทะเบียน" // Registration command in Thai
             }
         };
+        
+        // Call ProcessLineAsync instead of HandleRegistrationMenuClickAsync directly
+        var emailRegistrationProcessor = GetEmailRegistrationProcessor();
+        await emailRegistrationProcessor.ProcessLineAsync(registerEvent, 0, "ลงทะเบียน", userId, "", CancellationToken.None);
+        
+        _logger.LogInformation("HandleRegisterAction completed for user {UserId}", userId);
+        
+        // Return success status without reply message since the processor handles messaging
+        return new LineReplyStatus { Status = 204 }; // 204 No Content - successful but no reply
     }
     
     /// <summary>

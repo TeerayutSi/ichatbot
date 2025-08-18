@@ -23,6 +23,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Caching.Distributed;
 using Utharn.Library.Localizer;
 
 namespace ChatbotApi.Infrastructure;
@@ -108,8 +110,27 @@ public static class DependencyInjection
 
         foreach (var type in processorTypes)
         {
-            services.AddScoped(typeof(ILineMessageProcessor), type);
+            // Special handling for RichMenuProcessor to avoid circular dependency
+            if (type == typeof(ChatbotApi.Infrastructure.Processors.RichMenuProcessor.RichMenuProcessor))
+            {
+                services.AddScoped(typeof(ILineMessageProcessor),
+                    serviceProvider => new ChatbotApi.Infrastructure.Processors.RichMenuProcessor.RichMenuProcessor(
+                        serviceProvider.GetRequiredService<IApplicationDbContext>(),
+                        serviceProvider.GetRequiredService<ILogger<ChatbotApi.Infrastructure.Processors.RichMenuProcessor.RichMenuProcessor>>(),
+                        serviceProvider.GetRequiredService<IConfiguration>(),
+                        serviceProvider.GetRequiredService<IHttpClientFactory>(),
+                        serviceProvider.GetRequiredService<IMemoryCache>(),
+                        serviceProvider.GetRequiredService<IDistributedCache>(),
+                        serviceProvider.GetRequiredService<ISystemService>(),
+                        serviceProvider
+                    ));
+            }
+            else
+            {
+                services.AddScoped(typeof(ILineMessageProcessor), type);
+            }
         }
+        
         var facebookMessengerTypes = typeof(DependencyInjection).Assembly.GetTypes()
             .Where(t => t.IsClass && !t.IsAbstract && typeof(IFacebookMessenger).IsAssignableFrom(t));
         foreach (var type in facebookMessengerTypes)

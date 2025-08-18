@@ -122,36 +122,6 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                 return await HandleAgencySelection(evt, userId, replyToken, cancellationToken);
             }
         }
-
-        // Check if message is hide menu command
-        if (IsHideMenuCommand(message))
-        {
-            // Show a message that keyboard is active
-            return new LineReplyStatus
-            {
-                Status = 200,
-                ReplyMessage = new LineReplyMessage
-                {
-                    ReplyToken = replyToken,
-                    Messages = new List<LineMessage>
-                    {
-                        new LineTextMessage("⌨️ คีย์บอร์ดพร้อมใช้งาน สามารถพิมพ์ข้อความได้ตามปกติ\nพิมพ์ \"เมนู\" เพื่อแสดงเมนูอีกครั้ง")
-                    }
-                }
-            };
-        }
-        
-        // Check if message is menu command
-        if (IsMenuCommand(message))
-        {
-            // Create and send the menu Flex message
-            var flexMessage = CreateMenuFlexMessage();
-            return new LineReplyStatus
-            {
-                Status = 201, // Special status for FLEX messages
-                Raw = flexMessage
-            };
-        }
         
         // Check if message is an email address (for registration)
         if (IsValidEmail(message))
@@ -471,18 +441,6 @@ public class WorkingTimeProcessor : ILineMessageProcessor
     {
         var checkOutCommands = new[] { "เช็คเอาต์", "เช็คเอาท์", "check-out", "check out", "checkout" };
         return checkOutCommands.Contains(message.ToLowerInvariant().Trim());
-    }
-
-    private bool IsMenuCommand(string message)
-    {
-        var menuCommands = new[] { "เมนู", "menu", "Menu", "แสดงเมนู", "show menu" };
-        return menuCommands.Contains(message.ToLowerInvariant().Trim());
-    }
-    
-    private bool IsHideMenuCommand(string message)
-    {
-        var hideMenuCommands = new[] { "ซ่อนเมนู", "hide menu", "keyboard", "คีย์บอร์ด" };
-        return hideMenuCommands.Contains(message.ToLowerInvariant().Trim());
     }
 
     private async Task<LineReplyStatus> HandleCheckInCommand(string userId, string replyToken, WorkingTimeType type, string accessToken, CancellationToken cancellationToken)
@@ -940,152 +898,6 @@ public class WorkingTimeProcessor : ILineMessageProcessor
         return json;
     }
 
-    /// <summary>
-    /// Creates a Flex message with a menu of 6 items in 2 rows (3 items per row)
-    /// </summary>
-    /// <returns>JSON string of the Flex message</returns>
-    private string CreateMenuFlexMessage()
-    {
-        // Create a Flex message with a menu of 5 items in 3 rows
-        var flexMessage = new
-        {
-            type = "bubble",
-            body = new
-            {
-                type = "box",
-                layout = "vertical",
-                contents = new object[]
-                {
-                    // Header
-                    new
-                    {
-                        type = "text",
-                        text = "เมนูการทำงาน",
-                        weight = "bold",
-                        size = "xl",
-                        align = "center",
-                        margin = "md"
-                    },
-                    // Separator
-                    new
-                    {
-                        type = "separator",
-                        margin = "lg"
-                    },
-                    // Row 1: Register (full width)
-                    new
-                    {
-                        type = "box",
-                        layout = "horizontal",
-                        margin = "lg",
-                        contents = new object[]
-                        {
-                            // Register button
-                            new
-                            {
-                                type = "button",
-                                action = new
-                                {
-                                    type = "postback",
-                                    label = "ลงทะเบียน",
-                                    data = "menu_register"
-                                },
-                                style = "primary",
-                                color = "#007bff",
-                                flex = 1
-                            }
-                        }
-                    },
-                    // Row 2: Check-in, Check-out
-                    new
-                    {
-                        type = "box",
-                        layout = "horizontal",
-                        margin = "md",
-                        contents = new object[]
-                        {
-                            // Check-in button
-                            new
-                            {
-                                type = "button",
-                                action = new
-                                {
-                                    type = "postback",
-                                    label = "ลงเวลาเข้า",
-                                    data = "menu_checkin"
-                                },
-                                style = "primary",
-                                color = "#28a745",
-                                flex = 1
-                            },
-                            // Check-out button
-                            new
-                            {
-                                type = "button",
-                                action = new
-                                {
-                                    type = "postback",
-                                    label = "ลงเวลาออก",
-                                    data = "menu_checkout"
-                                },
-                                style = "primary",
-                                color = "#dc3545",
-                                flex = 1,
-                                margin = "sm"
-                            }
-                        }
-                    },
-                    // Row 3: Work schedule, Appointment
-                    new
-                    {
-                        type = "box",
-                        layout = "horizontal",
-                        margin = "md",
-                        contents = new object[]
-                        {
-                            // Work schedule button
-                            new
-                            {
-                                type = "button",
-                                action = new
-                                {
-                                    type = "uri",
-                                    label = "นัดหมาย",
-                                    uri = "https://crm.nti.co.th"
-                                },
-                                style = "secondary",
-                                color = "#6c757d",
-                                flex = 1,
-                                margin = "sm"
-                            }
-                            ,
-                            // Appointment button
-                            new
-                            {
-                                type = "button",
-                                action = new
-                                {
-                                    type = "uri",
-                                    label = "แจ้งตารางงาน",
-                                    uri = "https://crm.nti.co.th"
-                                },
-                                style = "secondary",
-                                color = "#6c757d",
-                                flex = 1
-                            }
-                        }
-                    }
-                },
-                paddingAll = "20px"
-            }
-        };
-
-        return JsonSerializer.Serialize(flexMessage, new JsonSerializerOptions
-        {
-            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-            WriteIndented = false
-        });
-    }
 
     private async Task<bool> SubmitToHrSystem(WorkingTimeSession session, string userId, CancellationToken cancellationToken)
     {
@@ -1235,7 +1047,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                     new
                     {
                         type = "text",
-                        text = "ยืนยันผูก LineId กับอีเมล",
+                        text = "ต้องการผูกบัญชี Line กับอีเมล",
                         weight = "bold",
                         size = "lg",
                         margin = "md"

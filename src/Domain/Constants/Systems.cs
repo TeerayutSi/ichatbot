@@ -13,6 +13,7 @@ public abstract class Systems
     public const string SummarizeEmail = "SummarizeEmail";
     public const string WorkingTime = "WorkingTime";
     public const string RichMenu = "RichMenu";
+    public const string EmailRegistration = "EmailRegistration";
     public static readonly IReadOnlyDictionary<string, string> Plugins = new Dictionary<string, string>
     {
         { CustomJSON, "เปิดการใช้งาน Line Flex หรือ Custom JSON (Line, GoogleChat)" },
@@ -24,6 +25,7 @@ public abstract class Systems
         { GoldReport, "รายงานราคาทองคำ (Line)" },
         { SummarizeEmail, "สรุปเนื้อหาอีเมล (Line)" },
         { WorkingTime, "ระบบเช็คอิน/เช็คเอาท์ (Line)" },
-        { RichMenu, "ระบบจัดการ Rich Menu (Line)" }
+        { RichMenu, "ระบบจัดการ Rich Menu (Line)" },
+        { EmailRegistration, "ระบบลงทะเบียนด้วยอีเมล (Line)" }
     };
 }
