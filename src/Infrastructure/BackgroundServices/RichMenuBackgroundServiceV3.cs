@@ -212,55 +212,112 @@ public class RichMenuBackgroundServiceV3 : BackgroundService
                 ChatBarText = _configuration.GetValue<string>("LineRichMenu:ChatBarText", "เมนูการทำงาน"),
                 Areas = new List<RichMenuArea>
                 {
-                    // Row 1: Registration button (full width)
+                    // Row 1: Register button (left)
                     new RichMenuArea
                     {
                         Bounds = new RichMenuBounds
                         {
                             X = 0,
                             Y = 0,
-                            Width = 2500,
+                            Width = 833,
                             Height = 843
                         },
                         Action = new RichMenuAction
                         {
                             Type = "message",
                             Text = "ลงทะเบียน",
-                            Label = "ลงทะเบียน"
+                            Label = "ลงทะเบียน",
+                            Data= "menu_register"
                         }
                     },
-                    // Row 2: Check-in button (left half)
+                    // Row 1: Check-in button (center)
                     new RichMenuArea
                     {
                         Bounds = new RichMenuBounds
                         {
-                            X = 0,
-                            Y = 843,
-                            Width = 1250,
+                            X = 834,
+                            Y = 0,
+                            Width = 833,
                             Height = 843
                         },
                         Action = new RichMenuAction
                         {
                             Type = "message",
                             Text = "check-in",
-                            Label = "Check-in"
+                            Label = "Check-in",
+                            Data= "menu_checkin"
                         }
                     },
-                    // Row 2: Check-out button (right half)
+                    // Row 1: Check-out button (right)
                     new RichMenuArea
                     {
                         Bounds = new RichMenuBounds
                         {
-                            X = 1250,
-                            Y = 843,
-                            Width = 1250,
+                            X = 1667,
+                            Y = 0,
+                            Width = 833,
                             Height = 843
                         },
                         Action = new RichMenuAction
                         {
                             Type = "message",
                             Text = "check-out",
-                            Label = "Check-out"
+                            Label = "Check-out",
+                            Data= "menu_checkout"
+                        }
+                    },
+                    // Row 2: Event button (left)
+                    new RichMenuArea
+                    {
+                        Bounds = new RichMenuBounds
+                        {
+                            X = 0,
+                            Y = 843,
+                            Width = 833,
+                            Height = 843
+                        },
+                        Action = new RichMenuAction
+                        {
+                            Type = "message",
+                            Text = "event",
+                            Label = "Event",
+                            Data= "menu_event"
+                        }
+                    },
+                    // Row 2: calendar button (center)
+                    new RichMenuArea
+                    {
+                        Bounds = new RichMenuBounds
+                        {
+                            X = 834,
+                            Y = 843,
+                            Width = 833,
+                            Height = 843
+                        },
+                        Action = new RichMenuAction
+                        {
+                            Type = "message",
+                            Text = "calendar",
+                            Label = "Calendar",
+                            Data= "menu_calendar"
+                        }
+                    },
+                    // Row 2: help button (right)
+                    new RichMenuArea
+                    {
+                        Bounds = new RichMenuBounds
+                        {
+                            X = 1667,
+                            Y = 843,
+                            Width = 833,
+                            Height = 843
+                        },
+                        Action = new RichMenuAction
+                        {
+                            Type = "message",
+                            Text = "help",
+                            Label = "Help",
+                            Data= "menu_help"
                         }
                     }
                 }

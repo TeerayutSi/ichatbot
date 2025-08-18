@@ -13,6 +13,7 @@ using RichMenuSize = ChatbotApi.Application.Common.Models.RichMenuSize;
 using RichMenuArea = ChatbotApi.Application.Common.Models.RichMenuArea;
 using RichMenuBounds = ChatbotApi.Application.Common.Models.RichMenuBounds;
 using RichMenuAction = ChatbotApi.Application.Common.Models.RichMenuAction;
+using DocumentFormat.OpenXml.Drawing.Diagrams;
 
 namespace ChatbotApi.Infrastructure.Processors.RichMenuProcessor;
 
@@ -101,10 +102,10 @@ public class RichMenuProcessor : ILineMessageProcessor
             // Use a unique key combining chatbotId and userId to support multiple users
             var cacheKey = $"richmenu_create_{chatbotId}_{userId}";
             _cache.Set(cacheKey, chatbotId, TimeSpan.FromMinutes(5)); // Expire after 5 minutes
-            
+
             // Create and send confirmation flex message
             var flexMessage = CreateConfirmationFlexMessage("สร้าง", "new");
-            
+
             return new LineReplyStatus
             {
                 Status = 201,
@@ -155,9 +156,9 @@ public class RichMenuProcessor : ILineMessageProcessor
             // Use a unique key combining chatbotId and userId to support multiple users
             var cacheKey = $"richmenu_edit_{chatbotId}_{userId}";
             _cache.Set(cacheKey, richMenuId, TimeSpan.FromMinutes(5)); // Expire after 5 minutes
-            
+
             var flexMessage = CreateConfirmationFlexMessage("แก้ไข", richMenuId);
-            
+
             return new LineReplyStatus
             {
                 Status = 201,
@@ -208,9 +209,9 @@ public class RichMenuProcessor : ILineMessageProcessor
             // Use a unique key combining chatbotId and userId to support multiple users
             var cacheKey = $"richmenu_delete_{chatbotId}_{userId}";
             _cache.Set(cacheKey, richMenuId, TimeSpan.FromMinutes(5)); // Expire after 5 minutes
-            
+
             var flexMessage = CreateConfirmationFlexMessage("ลบ", richMenuId);
-            
+
             return new LineReplyStatus
             {
                 Status = 201,
@@ -290,12 +291,12 @@ public class RichMenuProcessor : ILineMessageProcessor
 
             // Perform the edit operation - create a new rich menu with the same configuration
             var result = await CreateRichMenuForChatbotAsync(chatbot, cancellationToken);
-            
+
             if (result)
             {
                 // Try to delete the old rich menu
                 await DeleteRichMenuAsync(chatbot.LineChannelAccessToken, richMenuId, cancellationToken);
-                
+
                 return new LineReplyStatus
                 {
                     Status = 200,
@@ -392,7 +393,7 @@ public class RichMenuProcessor : ILineMessageProcessor
 
             // Perform the delete operation
             var result = await DeleteRichMenuAsync(chatbot.LineChannelAccessToken, richMenuId, cancellationToken);
-            
+
             if (result)
             {
                 return new LineReplyStatus
@@ -491,7 +492,7 @@ public class RichMenuProcessor : ILineMessageProcessor
 
             // Perform the creation operation
             var result = await CreateRichMenuForChatbotAsync(chatbot, cancellationToken);
-            
+
             if (result)
             {
                 return new LineReplyStatus
@@ -545,7 +546,7 @@ public class RichMenuProcessor : ILineMessageProcessor
     {
         // Special handling for "สร้าง" action to use the correct confirmation message
         string confirmText = action == "สร้าง" ? "ยืนยันการสร้างเมนู" : $"ยืนยันการ{action}เมนู";
-        
+
         var json = $@"{{
   ""type"": ""bubble"",
   ""body"": {{
@@ -560,7 +561,7 @@ public class RichMenuProcessor : ILineMessageProcessor
       }},
       {{
         ""type"": ""text"",
-        ""text"": ""โดยคลิกปุ่ม<b>ยืนยัน</b> หรือพิมพ์ข้อความ <b>{confirmText}</b>"",
+        ""text"": ""โดยคลิกปุ่มยืนยัน หรือพิมพ์ข้อความ {confirmText}"",
         ""wrap"": true,
         ""size"": ""sm"",
         ""margin"": ""md""
@@ -702,63 +703,120 @@ public class RichMenuProcessor : ILineMessageProcessor
                 ChatBarText = _configuration.GetValue<string>("LineRichMenu:ChatBarText", "เมนูการทำงาน"),
                 Areas = new List<RichMenuArea>
                 {
-                    // Row 1: Registration button (full width)
+                    // Row 1: Register button (left)
                     new RichMenuArea
                     {
                         Bounds = new RichMenuBounds
                         {
                             X = 0,
                             Y = 0,
-                            Width = 2500,
+                            Width = 833,
                             Height = 843
                         },
                         Action = new RichMenuAction
                         {
                             Type = "message",
                             Text = "ลงทะเบียน",
-                            Label = "ลงทะเบียน"
+                            Label = "ลงทะเบียน",
+                            Data= "menu_register"
                         }
                     },
-                    // Row 2: Check-in button (left half)
+                    // Row 1: Check-in button (center)
                     new RichMenuArea
                     {
                         Bounds = new RichMenuBounds
                         {
-                            X = 0,
-                            Y = 843,
-                            Width = 1250,
+                            X = 834,
+                            Y = 0,
+                            Width = 833,
                             Height = 843
                         },
                         Action = new RichMenuAction
                         {
                             Type = "message",
                             Text = "check-in",
-                            Label = "Check-in"
+                            Label = "Check-in",
+                            Data= "menu_checkin"
                         }
                     },
-                    // Row 2: Check-out button (right half)
+                    // Row 1: Check-out button (right)
                     new RichMenuArea
                     {
                         Bounds = new RichMenuBounds
                         {
-                            X = 1250,
-                            Y = 843,
-                            Width = 1250,
+                            X = 1667,
+                            Y = 0,
+                            Width = 833,
                             Height = 843
                         },
                         Action = new RichMenuAction
                         {
                             Type = "message",
                             Text = "check-out",
-                            Label = "Check-out"
+                            Label = "Check-out",
+                            Data= "menu_checkout"
+                        }
+                    },
+                    // Row 2: Event button (left)
+                    new RichMenuArea
+                    {
+                        Bounds = new RichMenuBounds
+                        {
+                            X = 0,
+                            Y = 843,
+                            Width = 833,
+                            Height = 843
+                        },
+                        Action = new RichMenuAction
+                        {
+                            Type = "message",
+                            Text = "event",
+                            Label = "Event",
+                            Data= "menu_event"
+                        }
+                    },
+                    // Row 2: calendar button (center)
+                    new RichMenuArea
+                    {
+                        Bounds = new RichMenuBounds
+                        {
+                            X = 834,
+                            Y = 843,
+                            Width = 833,
+                            Height = 843
+                        },
+                        Action = new RichMenuAction
+                        {
+                            Type = "message",
+                            Text = "calendar",
+                            Label = "Calendar",
+                            Data= "menu_calendar"
+                        }
+                    },
+                    // Row 2: help button (right)
+                    new RichMenuArea
+                    {
+                        Bounds = new RichMenuBounds
+                        {
+                            X = 1667,
+                            Y = 843,
+                            Width = 833,
+                            Height = 843
+                        },
+                        Action = new RichMenuAction
+                        {
+                            Type = "message",
+                            Text = "help",
+                            Label = "Help",
+                            Data= "menu_help"
                         }
                     }
                 }
             };
 
-            var json = JsonSerializer.Serialize(richMenu, new JsonSerializerOptions 
-            { 
-                WriteIndented = true 
+            var json = JsonSerializer.Serialize(richMenu, new JsonSerializerOptions
+            {
+                WriteIndented = true
             });
             _logger.LogInformation("Rich Menu JSON: {RichMenuJson}", json);
 
@@ -787,7 +845,7 @@ public class RichMenuProcessor : ILineMessageProcessor
             else
             {
                 var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogError("Failed to create Rich Menu. Status: {StatusCode}, Error: {Error}", 
+                _logger.LogError("Failed to create Rich Menu. Status: {StatusCode}, Error: {Error}",
                     response.StatusCode, errorContent);
             }
         }

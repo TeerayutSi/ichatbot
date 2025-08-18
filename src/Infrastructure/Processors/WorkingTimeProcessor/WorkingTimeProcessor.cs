@@ -1050,20 +1050,6 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                                 action = new
                                 {
                                     type = "uri",
-                                    label = "แจ้งตารางงาน",
-                                    uri = "https://crm.nti.co.th"
-                                },
-                                style = "secondary",
-                                color = "#6c757d",
-                                flex = 1
-                            },
-                            // Appointment button
-                            new
-                            {
-                                type = "button",
-                                action = new
-                                {
-                                    type = "uri",
                                     label = "นัดหมาย",
                                     uri = "https://crm.nti.co.th"
                                 },
@@ -1071,6 +1057,21 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                                 color = "#6c757d",
                                 flex = 1,
                                 margin = "sm"
+                            }
+                            ,
+                            // Appointment button
+                            new
+                            {
+                                type = "button",
+                                action = new
+                                {
+                                    type = "uri",
+                                    label = "แจ้งตารางงาน",
+                                    uri = "https://crm.nti.co.th"
+                                },
+                                style = "secondary",
+                                color = "#6c757d",
+                                flex = 1
                             }
                         }
                     }
