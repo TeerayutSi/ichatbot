@@ -1,12 +1,15 @@
 using System.Text;
 using System.Text.Json;
+using ChatbotApi.Application.Common.Extensions;
 using ChatbotApi.Application.Common.Interfaces;
 using ChatbotApi.Application.Common.Models;
 using ChatbotApi.Domain.Constants;
 using ChatbotApi.Infrastructure.BackgroundServices;
+using ChatbotApi.Infrastructure.Processors.WorkingTimeProcessor;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
 using LineRichMenu = ChatbotApi.Application.Common.Models.LineRichMenu;
 using RichMenuSize = ChatbotApi.Application.Common.Models.RichMenuSize;
@@ -26,24 +29,73 @@ public class RichMenuProcessor : ILineMessageProcessor
     private readonly IConfiguration _configuration;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IMemoryCache _cache;
+    private readonly IDistributedCache _distributedCache;
+    private readonly ISystemService _systemService;
 
     public RichMenuProcessor(
         IApplicationDbContext context,
         ILogger<RichMenuProcessor> logger,
         IConfiguration configuration,
         IHttpClientFactory httpClientFactory,
-        IMemoryCache cache)
+        IMemoryCache cache,
+        IDistributedCache distributedCache,
+        ISystemService systemService)
     {
         _context = context;
         _logger = logger;
         _configuration = configuration;
         _httpClientFactory = httpClientFactory;
         _cache = cache;
+        _distributedCache = distributedCache;
+        _systemService = systemService;
     }
 
     public async Task<LineReplyStatus> ProcessLineAsync(LineEvent evt, int chatbotId, string message, string userId, string replyToken,
         CancellationToken cancellationToken = default)
     {
+        // Handle postback events from Rich Menu clicks
+        if (evt.Type == "postback" && evt.Postback?.Data != null)
+        {
+            var postbackData = evt.Postback.Data;
+            
+            // Handle Rich Menu actions directly without showing reply messages
+            if (postbackData == "menu_register")
+            {
+                // For registration, we process the action without showing reply message
+                return await HandleRegisterAction(userId, replyToken, cancellationToken);
+            }
+            
+            if (postbackData == "menu_checkin")
+            {
+                // Handle check-in action immediately without showing reply message
+                return await HandleCheckInAction(userId, replyToken, cancellationToken);
+            }
+            
+            if (postbackData == "menu_checkout")
+            {
+                // Handle check-out action immediately without showing reply message
+                return await HandleCheckOutAction(userId, replyToken, cancellationToken);
+            }
+            
+            if (postbackData == "menu_event")
+            {
+                // Handle event action immediately without showing reply message
+                return await HandleEventAction(userId, replyToken, cancellationToken);
+            }
+            
+            if (postbackData == "menu_calendar")
+            {
+                // Handle calendar action immediately without showing reply message
+                return await HandleCalendarAction(userId, replyToken, cancellationToken);
+            }
+            
+            if (postbackData == "menu_help")
+            {
+                // Handle help action immediately without showing reply message
+                return await HandleHelpAction(userId, replyToken, cancellationToken);
+            }
+        }
+        
         // Handle "#สร้างเมนู" command
         if (message == "#สร้างเมนู")
         {
@@ -101,7 +153,7 @@ public class RichMenuProcessor : ILineMessageProcessor
             // Store chatbotId in cache to indicate that menu creation is pending confirmation
             // Use a unique key combining chatbotId and userId to support multiple users
             var cacheKey = $"richmenu_create_{chatbotId}_{userId}";
-            _cache.Set(cacheKey, chatbotId, TimeSpan.FromMinutes(5)); // Expire after 5 minutes
+            await _cache.SetObjectAsync(cacheKey, chatbotId, 5, true, false); // Expire after 5 minutes
 
             // Create and send confirmation flex message
             var flexMessage = CreateConfirmationFlexMessage("สร้าง", "new");
@@ -155,7 +207,7 @@ public class RichMenuProcessor : ILineMessageProcessor
             // Store the rich menu ID in cache for confirmation
             // Use a unique key combining chatbotId and userId to support multiple users
             var cacheKey = $"richmenu_edit_{chatbotId}_{userId}";
-            _cache.Set(cacheKey, richMenuId, TimeSpan.FromMinutes(5)); // Expire after 5 minutes
+            await _cache.SetObjectAsync(cacheKey, richMenuId, 5, true, false); // Expire after 5 minutes
 
             var flexMessage = CreateConfirmationFlexMessage("แก้ไข", richMenuId);
 
@@ -208,7 +260,7 @@ public class RichMenuProcessor : ILineMessageProcessor
             // Store the rich menu ID in cache for confirmation
             // Use a unique key combining chatbotId and userId to support multiple users
             var cacheKey = $"richmenu_delete_{chatbotId}_{userId}";
-            _cache.Set(cacheKey, richMenuId, TimeSpan.FromMinutes(5)); // Expire after 5 minutes
+            await _cache.SetObjectAsync(cacheKey, richMenuId, 5, true, false); // Expire after 5 minutes
 
             var flexMessage = CreateConfirmationFlexMessage("ลบ", richMenuId);
 
@@ -270,7 +322,8 @@ public class RichMenuProcessor : ILineMessageProcessor
 
             // Retrieve the richMenuId from cache
             var cacheKey = $"richmenu_edit_{chatbotId}_{userId}";
-            if (!_cache.TryGetValue(cacheKey, out string richMenuId))
+            var richMenuId = await _cache.GetObjectAsync<string>(cacheKey);
+            if (richMenuId == null)
             {
                 return new LineReplyStatus
                 {
@@ -372,7 +425,8 @@ public class RichMenuProcessor : ILineMessageProcessor
 
             // Retrieve the richMenuId from cache
             var cacheKey = $"richmenu_delete_{chatbotId}_{userId}";
-            if (!_cache.TryGetValue(cacheKey, out string richMenuId))
+            var richMenuId = await _cache.GetObjectAsync<string>(cacheKey);
+            if (richMenuId == null)
             {
                 return new LineReplyStatus
                 {
@@ -471,7 +525,8 @@ public class RichMenuProcessor : ILineMessageProcessor
 
             // Check if creation was pending confirmation
             var cacheKey = $"richmenu_create_{chatbotId}_{userId}";
-            if (!_cache.TryGetValue(cacheKey, out int cachedChatbotId) || cachedChatbotId != chatbotId)
+            var cachedChatbotId = await _cache.GetObjectAsync<int>(cacheKey);
+            if (cachedChatbotId == 0 || cachedChatbotId != chatbotId)
             {
                 return new LineReplyStatus
                 {
@@ -926,5 +981,142 @@ public class RichMenuProcessor : ILineMessageProcessor
         string replyToken, string accessToken, CancellationToken cancellationToken = default)
     {
         return Task.FromResult(new LineReplyStatus { Status = 404 });
+    }
+    
+    private async Task<LineReplyStatus> HandleCheckInAction(string userId, string replyToken, CancellationToken cancellationToken)
+    {
+        // For immediate action without reply, we return a success status with no reply message
+        // In a real implementation, you would perform the check-in action here
+        _logger.LogInformation("Processing check-in action for user {UserId}", userId);
+        
+        // Return success status without reply message
+        return new LineReplyStatus { Status = 204 }; // 204 No Content - successful but no reply
+    }
+
+    /// <summary>
+    /// Checks if a user is registered by calling the SSO API
+    /// </summary>
+    /// <param name="lineUserId">The LINE user ID</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>True if user is registered, false otherwise</returns>
+    private async Task<bool> CheckUserRegistration(string lineUserId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Get API URL and token from configuration
+            var baseUrl = _configuration["WorkingTime:SSOApiUrl"];
+            var apiToken = _configuration["WorkingTime:SSOApiUrlToken"];
+            
+            if (string.IsNullOrEmpty(baseUrl) || string.IsNullOrEmpty(apiToken))
+            {
+                _logger.LogError("SSO API configuration is missing");
+                return false;
+            }
+
+            // Construct the full URL with the line user ID
+            var registerUrl = $"{baseUrl.TrimEnd('/')}/GetUserid";
+            var url = $"{registerUrl}?LineUserId={lineUserId}";
+            
+            // Create HTTP client
+            var httpClient = _httpClientFactory.CreateClient("resilient_nocompress");
+            
+            // Add authorization header
+            httpClient.DefaultRequestHeaders.Add("Authorization", apiToken);
+            
+            // Make the request
+            var response = await httpClient.GetAsync(url, cancellationToken);
+            
+            // Log the response for debugging
+            _logger.LogInformation("SSO API response status: {StatusCode} for user {UserId}", response.StatusCode, lineUserId);
+            
+            // Return true if we get a 200 OK response, false for 404 or any other status
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error checking user registration for user {UserId}", lineUserId);
+            return false;
+        }
+    }
+
+    private async Task<string?> GetLineProfileName(string userId, CancellationToken cancellationToken)
+    {
+        // First, we need to get the chatbot to get the access token
+        // For simplicity, we'll try to get any chatbot with a valid access token
+        var chatbot = await _context.Chatbots
+            .Where(c => !string.IsNullOrEmpty(c.LineChannelAccessToken))
+            .FirstOrDefaultAsync(cancellationToken);
+            
+        if (chatbot == null || string.IsNullOrEmpty(chatbot.LineChannelAccessToken))
+        {
+            _logger.LogWarning("No chatbot with valid access token found for getting user profile");
+            return null;
+        }
+        
+        var client = _httpClientFactory.CreateClient("resilient_nocompress");
+        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {chatbot.LineChannelAccessToken}");
+
+        var url = $"https://api.line.me/v2/bot/profile/{userId}";
+        var lineResponse = await client.GetAsync(url, cancellationToken);
+
+        if (!lineResponse.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("Failed to get user profile: {StatusCode}", lineResponse.StatusCode);
+            return null;
+        }
+
+        var lineContent = await lineResponse.Content.ReadAsStringAsync(cancellationToken);
+        var json = JsonDocument.Parse(lineContent);
+        return json.RootElement.GetProperty("displayName").GetString() ?? string.Empty;
+    }
+    
+    private async Task<LineReplyStatus> HandleCheckOutAction(string userId, string replyToken, CancellationToken cancellationToken)
+    {
+        // For immediate action without reply, we return a success status with no reply message
+        // In a real implementation, you would perform the check-out action here
+        _logger.LogInformation("Processing check-out action for user {UserId}", userId);
+        
+        // Return success status without reply message
+        return new LineReplyStatus { Status = 204 }; // 204 No Content - successful but no reply
+    }
+    
+    private async Task<LineReplyStatus> HandleEventAction(string userId, string replyToken, CancellationToken cancellationToken)
+    {
+        // For immediate action without reply, we return a success status with no reply message
+        // In a real implementation, you would perform the event action here
+        _logger.LogInformation("Processing event action for user {UserId}", userId);
+        
+        // Return success status without reply message
+        return new LineReplyStatus { Status = 204 }; // 204 No Content - successful but no reply
+    }
+    
+    private async Task<LineReplyStatus> HandleCalendarAction(string userId, string replyToken, CancellationToken cancellationToken)
+    {
+        // For immediate action without reply, we return a success status with no reply message
+        // In a real implementation, you would perform the calendar action here
+        _logger.LogInformation("Processing calendar action for user {UserId}", userId);
+        
+        // Return success status without reply message
+        return new LineReplyStatus { Status = 204 }; // 204 No Content - successful but no reply
+    }
+    
+    private async Task<LineReplyStatus> HandleHelpAction(string userId, string replyToken, CancellationToken cancellationToken)
+    {
+        // For immediate action without reply, we return a success status with no reply message
+        // In a real implementation, you would perform the help action here
+        _logger.LogInformation("Processing help action for user {UserId}", userId);
+        
+        // Return success status without reply message
+        return new LineReplyStatus { Status = 204 }; // 204 No Content - successful but no reply
+    }
+    
+    private async Task<LineReplyStatus> HandleRegisterAction(string userId, string replyToken, CancellationToken cancellationToken)
+    {
+        // For immediate action without reply, we return a success status with no reply message
+        // In a real implementation, you would perform the registration action here
+        _logger.LogInformation("Processing registration action for user {UserId}", userId);
+        
+        // Return success status without reply message
+        return new LineReplyStatus { Status = 204 }; // 204 No Content - successful but no reply
     }
 }
