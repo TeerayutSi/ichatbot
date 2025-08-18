@@ -8,6 +8,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Linq;
 
 namespace ChatbotApi.Infrastructure.BackgroundServices;
 
@@ -128,8 +129,9 @@ public class ManualRichMenuTester
                         },
                         Action = new RichMenuAction
                         {
-                            Type = "message",
-                            Text = "ลงทะเบียน",
+                            Type = "postback",
+                            Data = "menu_register",
+                            DisplayText = "ลงทะเบียน",
                             Label = "ลงทะเบียน"
                         }
                     },

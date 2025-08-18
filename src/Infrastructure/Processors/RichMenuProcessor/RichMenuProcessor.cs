@@ -785,10 +785,10 @@ public class RichMenuProcessor : ILineMessageProcessor
                         },
                         Action = new RichMenuAction
                         {
-                            Type = "message",
-                            Text = "ลงทะเบียน",
-                            Label = "ลงทะเบียน",
-                            Data= "menu_register"
+                            Type = "postback",
+                            Data = "menu_register",
+                            DisplayText = "ลงทะเบียน",
+                            Label = "ลงทะเบียน"
                         }
                     },
                     // Row 1: Check-in button (center)
@@ -803,8 +803,8 @@ public class RichMenuProcessor : ILineMessageProcessor
                         },
                         Action = new RichMenuAction
                         {
-                            Type = "message",
-                            Text = "check-in",
+                            Type = "postback",
+                            DisplayText = "check-in",
                             Label = "Check-in",
                             Data= "menu_checkin"
                         }
@@ -821,8 +821,8 @@ public class RichMenuProcessor : ILineMessageProcessor
                         },
                         Action = new RichMenuAction
                         {
-                            Type = "message",
-                            Text = "check-out",
+                            Type = "postback",
+                            DisplayText = "check-out",
                             Label = "Check-out",
                             Data= "menu_checkout"
                         }
@@ -839,8 +839,8 @@ public class RichMenuProcessor : ILineMessageProcessor
                         },
                         Action = new RichMenuAction
                         {
-                            Type = "message",
-                            Text = "event",
+                            Type = "postback",
+                            DisplayText = "event",
                             Label = "Event",
                             Data= "menu_event"
                         }
@@ -857,8 +857,8 @@ public class RichMenuProcessor : ILineMessageProcessor
                         },
                         Action = new RichMenuAction
                         {
-                            Type = "message",
-                            Text = "calendar",
+                            Type = "postback",
+                            DisplayText = "calendar",
                             Label = "Calendar",
                             Data= "menu_calendar"
                         }
@@ -875,8 +875,8 @@ public class RichMenuProcessor : ILineMessageProcessor
                         },
                         Action = new RichMenuAction
                         {
-                            Type = "message",
-                            Text = "help",
+                            Type = "postback",
+                            DisplayText = "help",
                             Label = "Help",
                             Data= "menu_help"
                         }

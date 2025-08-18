@@ -224,10 +224,10 @@ public class RichMenuBackgroundServiceV3 : BackgroundService
                         },
                         Action = new RichMenuAction
                         {
-                            Type = "message",
-                            Text = "ลงทะเบียน",
-                            Label = "ลงทะเบียน",
-                            Data= "menu_register"
+                            Type = "postback",
+                            Data = "menu_register",
+                            DisplayText = "ลงทะเบียน",
+                            Label = "ลงทะเบียน"
                         }
                     },
                     // Row 1: Check-in button (center)
