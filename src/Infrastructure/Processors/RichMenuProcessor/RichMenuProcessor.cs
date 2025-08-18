@@ -94,6 +94,21 @@ public class RichMenuProcessor : ILineMessageProcessor
                 // Handle help action immediately without showing reply message
                 return await HandleHelpAction(userId, replyToken, cancellationToken);
             }
+            
+            // Handle email registration confirmation
+            if (postbackData.StartsWith("confirm_email_registration_"))
+            {
+                var email = postbackData.Substring("confirm_email_registration_".Length);
+                // Clean email: trim whitespace and convert to lowercase
+                var cleanEmail = email.Trim().ToLower();
+                return await HandleEmailRegistration(cleanEmail, userId, replyToken, cancellationToken);
+            }
+        }
+        
+        // Check if message is an email address (for registration)
+        if (IsValidEmail(message))
+        {
+            return await ShowEmailConfirmation(message, userId, replyToken, cancellationToken);
         }
         
         // Handle "#สร้างเมนู" command
@@ -1112,11 +1127,269 @@ public class RichMenuProcessor : ILineMessageProcessor
     
     private async Task<LineReplyStatus> HandleRegisterAction(string userId, string replyToken, CancellationToken cancellationToken)
     {
-        // For immediate action without reply, we return a success status with no reply message
-        // In a real implementation, you would perform the registration action here
-        _logger.LogInformation("Processing registration action for user {UserId}", userId);
+        // First check if user is registered
+        var isRegistered = await CheckUserRegistration(userId, cancellationToken);
         
-        // Return success status without reply message
-        return new LineReplyStatus { Status = 204 }; // 204 No Content - successful but no reply
+        if (isRegistered)
+        {
+            // User is already registered, show a confirmation message
+            return new LineReplyStatus
+            {
+                Status = 200,
+                ReplyMessage = new LineReplyMessage
+                {
+                    ReplyToken = replyToken,
+                    Messages = new List<LineMessage>
+                    {
+                        new LineTextMessage("คุณได้ลงทะเบียนเรียบร้อยแล้ว")
+                    }
+                }
+            };
+        }
+        
+        // User is not registered, prompt them to enter their company email
+        return new LineReplyStatus
+        {
+            Status = 200,
+            ReplyMessage = new LineReplyMessage
+            {
+                ReplyToken = replyToken,
+                Messages = new List<LineMessage>
+                {
+                    new LineTextMessage("📧กรุณาลงทะเบียนผูก LineId ของคุณกับอีเมลบริษัท ด้วยการพิมพ์อีเมล xxx@nti.co.th แล้วกดส่งข้อความ")
+                }
+            }
+        };
+    }
+    
+    /// <summary>
+    /// Validates if a string is a valid email address
+    /// </summary>
+    /// <param name="email">The email string to validate</param>
+    /// <returns>True if valid email, false otherwise</returns>
+    private bool IsValidEmail(string email)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+            return false;
+            
+        // Check if email ends with @nti.co.th
+        if (!email.EndsWith("@nti.co.th", StringComparison.OrdinalIgnoreCase))
+            return false;
+            
+        try
+        {
+            // Use simple regex to validate email format
+            var emailRegex = new System.Text.RegularExpressions.Regex(@"^[^@\s]+@[^@\s]+\.[^@\s]+$");
+            return emailRegex.IsMatch(email);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+    
+    /// <summary>
+    /// Shows a confirmation flex message for email registration
+    /// </summary>
+    /// <param name="email">The company email address</param>
+    /// <param name="lineUserId">The LINE user ID</param>
+    /// <param name="replyToken">The reply token for sending response</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>LineReplyStatus with confirmation flex message</returns>
+    private async Task<LineReplyStatus> ShowEmailConfirmation(string email, string lineUserId, string replyToken, CancellationToken cancellationToken)
+    {
+        // Clean email: trim whitespace and convert to lowercase
+        var cleanEmail = email.Trim().ToLower();
+        
+        // Create a flex message with confirmation button
+        var flexMessage = new
+        {
+            type = "bubble",
+            body = new
+            {
+                type = "box",
+                layout = "vertical",
+                contents = new object[]
+                {
+                    new
+                    {
+                        type = "text",
+                        text = "ยืนยันผูก LineId กับอีเมล",
+                        weight = "bold",
+                        size = "lg",
+                        margin = "md"
+                    },
+                    new
+                    {
+                        type = "box",
+                        layout = "vertical",
+                        margin = "sm",
+                        contents = new object[]
+                        {
+                            new
+                            {
+                                type = "text",
+                                text = cleanEmail,
+                                wrap = true,
+                                color = "#007bff",
+                                size = "xl",
+                                weight = "bold"
+                            }
+                        }
+                    }
+                },
+                paddingAll = "20px"
+            },
+            footer = new
+            {
+                type = "box",
+                layout = "vertical",
+                contents = new object[]
+                {
+                    new
+                    {
+                        type = "button",
+                        action = new
+                        {
+                            type = "postback",
+                            label = "ยืนยัน",
+                            data = $"confirm_email_registration_{cleanEmail}"
+                        },
+                        style = "primary"
+                    }
+                }
+            }
+        };
+
+        return new LineReplyStatus
+        {
+            Status = 201, // Special status for FLEX messages
+            Raw = JsonSerializer.Serialize(flexMessage, new JsonSerializerOptions
+            {
+                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+                WriteIndented = false
+            })
+        };
+    }
+    
+    /// <summary>
+    /// Handles the email registration process
+    /// </summary>
+    /// <param name="email">The company email address</param>
+    /// <param name="lineUserId">The LINE user ID</param>
+    /// <param name="replyToken">The reply token for sending response</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>LineReplyStatus with appropriate response</returns>
+    private async Task<LineReplyStatus> HandleEmailRegistration(string email, string lineUserId, string replyToken, CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Get the SSO API URL and token from configuration
+            var baseUrl = _configuration["WorkingTime:SSOApiUrl"];
+            var apiToken = _configuration["WorkingTime:SSOApiUrlToken"];
+            
+            if (string.IsNullOrEmpty(baseUrl) || string.IsNullOrEmpty(apiToken))
+            {
+                _logger.LogError("SSO API configuration is missing");
+                return new LineReplyStatus
+                {
+                    Status = 200,
+                    ReplyMessage = new LineReplyMessage
+                    {
+                        ReplyToken = replyToken,
+                        Messages = new List<LineMessage>
+                        {
+                            new LineTextMessage("เกิดข้อผิดพลาดในการเชื่อมต่อกับระบบ กรุณาลองใหม่อีกครั้ง")
+                        }
+                    }
+                };
+            }
+            
+            // Get the base API URL and construct the RegisterLinebotUserId endpoint
+            var registerUrl = $"{baseUrl.TrimEnd('/')}/RegisterLinebotUserId";
+            
+            // Clean email: trim whitespace and convert to lowercase
+            var cleanEmail = email.Trim().ToLower();
+            
+            // Prepare the request data
+            var requestData = new
+            {
+                LinebotUserId = lineUserId,
+                Email = cleanEmail
+            };
+            
+            // Create JSON content
+            var jsonContent = JsonSerializer.Serialize(requestData);
+            var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+            
+            // Create HTTP client
+            var httpClient = _httpClientFactory.CreateClient("resilient_nocompress");
+            
+            // Create request message
+            var request = new HttpRequestMessage(HttpMethod.Post, registerUrl)
+            {
+                Content = content
+            };
+            
+            // Add headers
+            request.Headers.Add("Authorization", apiToken);
+            
+            // Make POST request to register the user
+            var response = await httpClient.SendAsync(request, cancellationToken);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                // Registration successful
+                _logger.LogInformation("User {UserId} successfully registered with email {Email}", lineUserId, email);
+                
+                return new LineReplyStatus
+                {
+                    Status = 200,
+                    ReplyMessage = new LineReplyMessage
+    {
+        ReplyToken = replyToken,
+        Messages = new List<LineMessage>
+        {
+            new LineTextMessage("ลงทะเบียนเรียบร้อยแล้ว")
+        }
+    }
+                };
+            }
+            else
+            {
+                // Registration failed
+                _logger.LogError("Failed to register user {UserId} with email {Email}. Status: {StatusCode}",
+                    lineUserId, email, response.StatusCode);
+                    
+                return new LineReplyStatus
+                {
+                    Status = 200,
+                    ReplyMessage = new LineReplyMessage
+                    {
+                        ReplyToken = replyToken,
+                        Messages = new List<LineMessage>
+                        {
+                            new LineTextMessage("ไม่สามารถลงทะเบียนได้ กรุณาตรวจสอบอีเมลและลองอีกครั้ง")
+                        }
+                    }
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during email registration for user {UserId}", lineUserId);
+            return new LineReplyStatus
+            {
+                Status = 200,
+                ReplyMessage = new LineReplyMessage
+                {
+                    ReplyToken = replyToken,
+                    Messages = new List<LineMessage>
+                    {
+                        new LineTextMessage("เกิดข้อผิดพลาดในการลงทะเบียน กรุณาลองใหม่อีกครั้ง")
+                    }
+                }
+            };
+        }
     }
 }
