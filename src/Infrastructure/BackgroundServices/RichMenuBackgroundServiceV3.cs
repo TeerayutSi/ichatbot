@@ -35,24 +35,8 @@ public class RichMenuBackgroundServiceV3 : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Run immediately but with a small delay to ensure the application is initialized
-        await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
-        
-        // Run only once at startup
-        if (!_hasRun)
-        {
-            try
-            {
-                _logger.LogInformation("Starting Rich Menu creation process");
-                await CreateRichMenuAsync(stoppingToken);
-                _hasRun = true;
-                _logger.LogInformation("Rich Menu creation process completed");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error occurred while creating Rich Menu");
-            }
-        }
+        // Do nothing - Rich Menu creation is now handled by the RichMenuProcessor
+        _logger.LogInformation("Rich Menu creation is now handled by RichMenuProcessor. This service is disabled.");
     }
 
     private async Task CreateRichMenuAsync(CancellationToken stoppingToken)
