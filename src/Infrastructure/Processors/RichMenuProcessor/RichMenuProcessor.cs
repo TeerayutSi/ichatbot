@@ -145,6 +145,21 @@ public class RichMenuProcessor : ILineMessageProcessor
             return new LineReplyStatus { Status = 204 }; // 204 No Content - successful but no reply
         }
         
+        // Handle text messages that should trigger Rich Menu actions
+        // Handle Event related messages (case-insensitive for English, exact match for Thai)
+        if (string.Equals(message, "Event", StringComparison.OrdinalIgnoreCase) || message == "นัดหมาย" || message == "บันทึกนัดหมาย")
+        {
+            // Handle event action immediately without showing reply message
+            return await HandleEventAction(userId, replyToken, cancellationToken);
+        }
+        
+        // Handle Calendar related messages (case-insensitive for English, exact match for Thai)
+        if (string.Equals(message, "Calendar", StringComparison.OrdinalIgnoreCase) || message == "แจ้งตารางงาน" || message == "บันทึกตารางงาน")
+        {
+            // Handle calendar action immediately without showing reply message
+            return await HandleCalendarAction(userId, replyToken, cancellationToken);
+        }
+
         // Handle "#สร้างเมนู" command
         if (message == "#สร้างเมนู")
         {
