@@ -924,10 +924,10 @@ public class RichMenuProcessor : ILineMessageProcessor
                         },
                         Action = new RichMenuAction
                         {
-                            Type = "postback",
+                            Type = "uri",
                             DisplayText = "help",
                             Label = "Help",
-                            Data= "menu_help"
+                            Uri = "https://www.nti.co.th/devsupport/TAutoBot"
                         }
                     }
                 }

@@ -69,4 +69,7 @@ public class RichMenuAction
     
     [JsonPropertyName("displayText")]
     public string? DisplayText { get; set; }
+    
+    [JsonPropertyName("uri")]
+    public string? Uri { get; set; }
 }
