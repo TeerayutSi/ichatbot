@@ -12,6 +12,14 @@ using ChatbotApi.Application.Common.Interfaces;
 using ChatbotApi.Domain.Entities;
 using ChatbotApi.Domain.Constants;
 
+// Enum for email validation results
+public enum EmailValidationResult
+{
+    Valid,
+    InvalidFormat,
+    NotCompanyEmail
+}
+
 namespace IChatBot.Infrastructure.Processors.EmailProcessors
 {
     public class EmailRegistrationProcessor : ILineMessageProcessor
@@ -53,7 +61,7 @@ namespace IChatBot.Infrastructure.Processors.EmailProcessors
         private async Task ShowEmailInputMessageAsync(string lineUserId)
         {
             // Show message asking user to type their email for registration
-            var message = "กรุณาพิมพ์อีเมลของคุณเพื่อลงทะเบียน";
+            var message = "📧กรุณาลงทะเบียนผูกบัญชี Line ของคุณกับอีเมลบริษัท ด้วยการพิมพ์อีเมล xxx@nti.co.th แล้วกดส่งข้อความ";
             await SendPushMessageAsync(lineUserId, message);
         }
         
@@ -61,9 +69,17 @@ namespace IChatBot.Infrastructure.Processors.EmailProcessors
         public async Task ProcessEmailInputAsync(string lineUserId, string email)
         {
             // Check if email is valid
-            if (!IsValidEmail(email))
+            var validationResult = ValidateEmail(email);
+            if (validationResult != EmailValidationResult.Valid)
             {
-                await ShowInvalidEmailMessageAsync(lineUserId);
+                if (validationResult == EmailValidationResult.NotCompanyEmail)
+                {
+                    await ShowNonCompanyEmailMessageAsync(lineUserId);
+                }
+                else
+                {
+                    await ShowInvalidEmailMessageAsync(lineUserId);
+                }
                 return;
             }
             
@@ -235,22 +251,30 @@ namespace IChatBot.Infrastructure.Processors.EmailProcessors
             await SendPushMessageAsync(lineUserId, message);
         }
         
+        // Method to show non-company email error message
+        private async Task ShowNonCompanyEmailMessageAsync(string lineUserId)
+        {
+            // Show message about non-company email
+            var message = "กรุณาใช้เฉพาะอีเมลบริษัท xxx@nti.co.th เท่านั้น";
+            await SendPushMessageAsync(lineUserId, message);
+        }
+        
         // Helper method to validate email format
-        private bool IsValidEmail(string email)
+        private EmailValidationResult ValidateEmail(string email)
         {
             // Check if email ends with @nti.co.th
             if (!email.EndsWith("@nti.co.th", StringComparison.OrdinalIgnoreCase))
-                return false;
+                return EmailValidationResult.NotCompanyEmail;
                 
             try
             {
                 // Use simple regex to validate email format
                 var emailRegex = new System.Text.RegularExpressions.Regex(@"^[^@\s]+@[^@\s]+\.[^@\s]+$");
-                return emailRegex.IsMatch(email);
+                return emailRegex.IsMatch(email) ? EmailValidationResult.Valid : EmailValidationResult.InvalidFormat;
             }
             catch
             {
-                return false;
+                return EmailValidationResult.InvalidFormat;
             }
         }
         
@@ -314,10 +338,23 @@ namespace IChatBot.Infrastructure.Processors.EmailProcessors
             }
             
             // Check if message is an email address for registration
-            if (IsValidEmail(message))
+            var validationResult = ValidateEmail(message);
+            if (validationResult == EmailValidationResult.Valid)
             {
                 // Process the email registration
                 await ProcessEmailInputAsync(userId, message);
+                return new LineReplyStatus { Status = 200 };
+            }
+            else if (validationResult == EmailValidationResult.NotCompanyEmail)
+            {
+                // Show error for non-company email
+                await ShowNonCompanyEmailMessageAsync(userId);
+                return new LineReplyStatus { Status = 200 };
+            }
+            else if (validationResult == EmailValidationResult.InvalidFormat)
+            {
+                // Show error for invalid format
+                await ShowInvalidEmailMessageAsync(userId);
                 return new LineReplyStatus { Status = 200 };
             }
             

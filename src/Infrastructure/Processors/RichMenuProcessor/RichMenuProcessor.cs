@@ -1195,25 +1195,77 @@ public class RichMenuProcessor : ILineMessageProcessor
     
     private async Task<LineReplyStatus> HandleHelpAction(string userId, string replyToken, CancellationToken cancellationToken)
     {
-        // For immediate action without reply, we return a success status with no reply message
-        // In a real implementation, you would perform the help action here
         _logger.LogInformation("Processing help action for user {UserId}", userId);
         
-        // Return success status without reply message
-        return new LineReplyStatus { Status = 204 }; // 204 No Content - successful but no reply
+        // Create URI action to open help URL directly
+        var template = new
+        {
+            type = "template",
+            altText = "Help",
+            template = new
+            {
+                type = "buttons",
+                text = "กำลังเปิดหน้าช่วยเหลือ...",
+                actions = new[]
+                {
+                    new
+                    {
+                        type = "uri",
+                        label = "เปิดลิงก์ช่วยเหลือ",
+                        uri = "https://www.nti.co.th/devsupport/TAutoBot"
+                    }
+                }
+            }
+        };
+        
+        var json = JsonSerializer.Serialize(template, new JsonSerializerOptions
+        {
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            WriteIndented = false
+        });
+        
+        return new LineReplyStatus
+        {
+            Status = 201,
+            Raw = json
+        };
     }
     
     private async Task<LineReplyStatus> HandleHelpMessage(string userId, string replyToken, CancellationToken cancellationToken)
     {
         _logger.LogInformation("Processing help message for user {UserId}", userId);
         
-        // Create a flex message with URI action to open the help URL
-        var flexMessage = CreateHelpFlexMessage();
+        // Create URI action to open help URL directly
+        var template = new
+        {
+            type = "template",
+            altText = "Help",
+            template = new
+            {
+                type = "buttons",
+                text = "กำลังเปิดหน้าช่วยเหลือ...",
+                actions = new[]
+                {
+                    new
+                    {
+                        type = "uri",
+                        label = "เปิดลิงก์ช่วยเหลือ",
+                        uri = "https://www.nti.co.th/devsupport/TAutoBot"
+                    }
+                }
+            }
+        };
+        
+        var json = JsonSerializer.Serialize(template, new JsonSerializerOptions
+        {
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            WriteIndented = false
+        });
         
         return new LineReplyStatus
         {
-            Status = 201, // Special status for FLEX messages
-            Raw = flexMessage
+            Status = 201,
+            Raw = json
         };
     }
     
@@ -1338,7 +1390,7 @@ public class RichMenuProcessor : ILineMessageProcessor
                     new
                     {
                         type = "text",
-                        text = "ยืนยันผูก LineId กับอีเมล",
+                        text = "ยืนยันผูกบัญชี Line กับอีเมล",
                         weight = "bold",
                         size = "lg",
                         margin = "md"

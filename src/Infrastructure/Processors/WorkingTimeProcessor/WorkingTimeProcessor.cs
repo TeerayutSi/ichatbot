@@ -98,7 +98,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                         ReplyToken = replyToken,
                         Messages = new List<LineMessage>
                         {
-                            new LineTextMessage("📧กรุณาลงทะเบียนผูก LineId ของคุณกับอีเมลบริษัท ด้วยการพิมพ์อีเมล xxx@nti.co.th แล้วกดส่งข้อความ")
+                            new LineTextMessage("📧กรุณาลงทะเบียนผูกบัญชี Line ของคุณกับอีเมลบริษัท ด้วยการพิมพ์อีเมล xxx@nti.co.th แล้วกดส่งข้อความ")
                         }
                     }
                 };
