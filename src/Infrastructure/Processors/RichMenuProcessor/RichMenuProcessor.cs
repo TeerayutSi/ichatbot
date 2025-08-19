@@ -153,6 +153,13 @@ public class RichMenuProcessor : ILineMessageProcessor
             return await HandleEventAction(userId, replyToken, cancellationToken);
         }
         
+        // Handle Help related messages (case-insensitive for English, exact match for Thai)
+        if (string.Equals(message, "help", StringComparison.OrdinalIgnoreCase) || message == "ช่วยเหลือ")
+        {
+            // Handle help action by sending a flex message with URI action
+            return await HandleHelpMessage(userId, replyToken, cancellationToken);
+        }
+
         // Handle Calendar related messages (case-insensitive for English, exact match for Thai)
         if (string.Equals(message, "Calendar", StringComparison.OrdinalIgnoreCase) || message == "แจ้งตารางงาน" || message == "บันทึกตารางงาน")
         {
@@ -1194,6 +1201,63 @@ public class RichMenuProcessor : ILineMessageProcessor
         
         // Return success status without reply message
         return new LineReplyStatus { Status = 204 }; // 204 No Content - successful but no reply
+    }
+    
+    private async Task<LineReplyStatus> HandleHelpMessage(string userId, string replyToken, CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Processing help message for user {UserId}", userId);
+        
+        // Create a flex message with URI action to open the help URL
+        var flexMessage = CreateHelpFlexMessage();
+        
+        return new LineReplyStatus
+        {
+            Status = 201, // Special status for FLEX messages
+            Raw = flexMessage
+        };
+    }
+    
+    private string CreateHelpFlexMessage()
+    {
+        // Create a flex message with a button that opens the help URL
+        var json = @"{
+  ""type"": ""bubble"",
+  ""body"": {
+    ""type"": ""box"",
+    ""layout"": ""vertical"",
+    ""contents"": [
+      {
+        ""type"": ""text"",
+        ""text"": ""Help & Support"",
+        ""weight"": ""bold"",
+        ""size"": ""xl"",
+        ""align"": ""center""
+      },
+      {
+        ""type"": ""text"",
+        ""text"": ""คุณต้องการความช่วยเหลือหรือไม่?"",
+        ""wrap"": true,
+        ""margin"": ""md""
+      }
+    ]
+  },
+  ""footer"": {
+    ""type"": ""box"",
+    ""layout"": ""vertical"",
+    ""contents"": [
+      {
+        ""type"": ""button"",
+        ""action"": {
+          ""type"": ""uri"",
+          ""label"": ""เปิดลิงก์ช่วยเหลือ"",
+          ""uri"": ""https://www.nti.co.th/devsupport/TAutoBot""
+        },
+        ""style"": ""primary""
+      }
+    ]
+  }
+}";
+        return json;
     }
     
     private async Task<LineReplyStatus> HandleRegisterAction(string userId, string replyToken, CancellationToken cancellationToken)
