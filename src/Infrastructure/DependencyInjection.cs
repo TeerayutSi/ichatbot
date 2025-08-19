@@ -125,6 +125,19 @@ public static class DependencyInjection
                         serviceProvider
                     ));
             }
+            // Special handling for EmailRegistrationProcessor to provide IMemoryCache
+            else if (type == typeof(IChatBot.Infrastructure.Processors.EmailProcessors.EmailRegistrationProcessor))
+            {
+                services.AddScoped(typeof(ILineMessageProcessor),
+                    serviceProvider => new IChatBot.Infrastructure.Processors.EmailProcessors.EmailRegistrationProcessor(
+                        serviceProvider.GetRequiredService<IConfiguration>(),
+                        serviceProvider.GetRequiredService<IHttpClientFactory>(),
+                        serviceProvider.GetRequiredService<ILogger<IChatBot.Infrastructure.Processors.EmailProcessors.EmailRegistrationProcessor>>(),
+                        serviceProvider.GetRequiredService<ILineMessenger>(),
+                        serviceProvider.GetRequiredService<IApplicationDbContext>(),
+                        serviceProvider.GetRequiredService<IMemoryCache>()
+                    ));
+            }
             else
             {
                 services.AddScoped(typeof(ILineMessageProcessor), type);
