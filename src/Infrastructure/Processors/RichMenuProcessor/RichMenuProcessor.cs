@@ -1135,8 +1135,19 @@ public class RichMenuProcessor : ILineMessageProcessor
         // In a real implementation, you would perform the event action here
         _logger.LogInformation("Processing event action for user {UserId}", userId);
         
-        // Return success status without reply message
-        return new LineReplyStatus { Status = 204 }; // 204 No Content - successful but no reply
+        // Return message indicating the feature is not available yet
+        return new LineReplyStatus
+        {
+            Status = 200,
+            ReplyMessage = new LineReplyMessage
+            {
+                ReplyToken = replyToken,
+                Messages = new List<LineMessage>
+                {
+                    new LineTextMessage { Text = "ยังไม่พร้อมใช้งานในขณะนี้ ฟังก์ชั่นนี้จะได้รับการพัฒนาและเปิดใช้ในอนาคต" }
+                }
+            }
+        };
     }
     
     private async Task<LineReplyStatus> HandleCalendarAction(string userId, string replyToken, CancellationToken cancellationToken)
@@ -1145,8 +1156,19 @@ public class RichMenuProcessor : ILineMessageProcessor
         // In a real implementation, you would perform the calendar action here
         _logger.LogInformation("Processing calendar action for user {UserId}", userId);
         
-        // Return success status without reply message
-        return new LineReplyStatus { Status = 204 }; // 204 No Content - successful but no reply
+        // Return message indicating the feature is not available yet
+        return new LineReplyStatus
+        {
+            Status = 200,
+            ReplyMessage = new LineReplyMessage
+            {
+                ReplyToken = replyToken,
+                Messages = new List<LineMessage>
+                {
+                    new LineTextMessage { Text = "ยังไม่พร้อมใช้งานในขณะนี้ ฟังก์ชั่นนี้จะได้รับการพัฒนาและเปิดใช้ในอนาคต" }
+                }
+            }
+        };
     }
     
     private async Task<LineReplyStatus> HandleHelpAction(string userId, string replyToken, CancellationToken cancellationToken)
