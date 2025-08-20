@@ -1557,17 +1557,18 @@ public class RichMenuProcessor : ILineMessageProcessor
                 // Registration successful
                 _logger.LogInformation("User {UserId} successfully registered with email {Email}", lineUserId, email);
                 
+                // Show registration success message and end the registration process
                 return new LineReplyStatus
                 {
                     Status = 200,
                     ReplyMessage = new LineReplyMessage
-    {
-        ReplyToken = replyToken,
-        Messages = new List<LineMessage>
-        {
-            new LineTextMessage("ลงทะเบียนเรียบร้อยแล้ว")
-        }
-    }
+                    {
+                        ReplyToken = replyToken,
+                        Messages = new List<LineMessage>
+                        {
+                            new LineTextMessage("ลงทะเบียนเรียบร้อย คุณสามารถใช้ฟังก์ชันการ Check-in, Check-out และอื่นๆ ได้ด้วยการคลิกที่เลือกจากเมนู หรือส่งข้อความ Check-in, Check-out เพื่อดำเนินการต่อ")
+                        }
+                    }
                 };
             }
             else
