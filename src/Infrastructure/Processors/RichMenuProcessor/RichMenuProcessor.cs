@@ -1089,14 +1089,64 @@ public class RichMenuProcessor : ILineMessageProcessor
     }
     
     private async Task<LineReplyStatus> HandleCheckInAction(string userId, string replyToken, CancellationToken cancellationToken)
-    {
-        // For immediate action without reply, we return a success status with no reply message
-        // In a real implementation, you would perform the check-in action here
-        _logger.LogInformation("Processing check-in action for user {UserId}", userId);
-        
-        // Return success status without reply message
-        return new LineReplyStatus { Status = 204 }; // 204 No Content - successful but no reply
-    }
+        {
+            _logger.LogInformation("Processing check-in action for user {UserId}", userId);
+            
+            // First check if user is registered
+            var isRegistered = await CheckUserRegistration(userId, cancellationToken);
+    
+            if (!isRegistered)
+            {
+                // User is not registered, prompt them to register with company email
+                return new LineReplyStatus
+                {
+                    Status = 200,
+                    ReplyMessage = new LineReplyMessage
+                    {
+                        ReplyToken = replyToken,
+                        Messages = new List<LineMessage>
+                        {
+                            new LineTextMessage("📧กรุณาลงทะเบียนผูก LineId ของคุณกับอีเมลบริษัท ด้วยการพิมพ์อีเมล xxx@nti.co.th แล้วกดส่งข้อความ")
+                        }
+                    }
+                };
+            }
+            
+            // Get the chatbot to get the access token
+            // For simplicity, we'll try to get any chatbot with a valid access token
+            var chatbot = await _context.Chatbots
+                .Where(c => !string.IsNullOrEmpty(c.LineChannelAccessToken))
+                .FirstOrDefaultAsync(cancellationToken);
+                
+            if (chatbot == null || string.IsNullOrEmpty(chatbot.LineChannelAccessToken))
+            {
+                _logger.LogWarning("No chatbot with valid access token found for check-in action");
+                return new LineReplyStatus { Status = 204 }; // 204 No Content - successful but no reply
+            }
+            
+            // Create a fake event to pass to WorkingTimeProcessor
+            var fakeEvent = new LineEvent
+            {
+                Type = "postback",
+                Postback = new Postback
+                {
+                    Data = "menu_checkin"
+                }
+            };
+            
+            // Get WorkingTimeProcessor from the service provider
+            var processors = _serviceProvider.GetServices<ILineMessageProcessor>();
+            var workingTimeProcessor = processors.FirstOrDefault(p => p.Name == Systems.WorkingTime);
+            
+            if (workingTimeProcessor != null)
+            {
+                // Call the WorkingTimeProcessor to handle the check-in action
+                return await workingTimeProcessor.ProcessLineAsync(fakeEvent, chatbot.Id, "check-in", userId, replyToken, cancellationToken);
+            }
+            
+            // If we can't find the WorkingTimeProcessor, return success status without reply message
+            return new LineReplyStatus { Status = 204 }; // 204 No Content - successful but no reply
+        }
 
     /// <summary>
     /// Checks if a user is registered by calling the SSO API
@@ -1176,14 +1226,64 @@ public class RichMenuProcessor : ILineMessageProcessor
     }
     
     private async Task<LineReplyStatus> HandleCheckOutAction(string userId, string replyToken, CancellationToken cancellationToken)
-    {
-        // For immediate action without reply, we return a success status with no reply message
-        // In a real implementation, you would perform the check-out action here
-        _logger.LogInformation("Processing check-out action for user {UserId}", userId);
-        
-        // Return success status without reply message
-        return new LineReplyStatus { Status = 204 }; // 204 No Content - successful but no reply
-    }
+        {
+            _logger.LogInformation("Processing check-out action for user {UserId}", userId);
+            
+            // First check if user is registered
+            var isRegistered = await CheckUserRegistration(userId, cancellationToken);
+    
+            if (!isRegistered)
+            {
+                // User is not registered, prompt them to register with company email
+                return new LineReplyStatus
+                {
+                    Status = 200,
+                    ReplyMessage = new LineReplyMessage
+                    {
+                        ReplyToken = replyToken,
+                        Messages = new List<LineMessage>
+                        {
+                            new LineTextMessage("📧กรุณาลงทะเบียนผูก LineId ของคุณกับอีเมลบริษัท ด้วยการพิมพ์อีเมล xxx@nti.co.th แล้วกดส่งข้อความ")
+                        }
+                    }
+                };
+            }
+            
+            // Get the chatbot to get the access token
+            // For simplicity, we'll try to get any chatbot with a valid access token
+            var chatbot = await _context.Chatbots
+                .Where(c => !string.IsNullOrEmpty(c.LineChannelAccessToken))
+                .FirstOrDefaultAsync(cancellationToken);
+                
+            if (chatbot == null || string.IsNullOrEmpty(chatbot.LineChannelAccessToken))
+            {
+                _logger.LogWarning("No chatbot with valid access token found for check-out action");
+                return new LineReplyStatus { Status = 204 }; // 204 No Content - successful but no reply
+            }
+            
+            // Create a fake event to pass to WorkingTimeProcessor
+            var fakeEvent = new LineEvent
+            {
+                Type = "postback",
+                Postback = new Postback
+                {
+                    Data = "menu_checkout"
+                }
+            };
+            
+            // Get WorkingTimeProcessor from the service provider
+            var processors = _serviceProvider.GetServices<ILineMessageProcessor>();
+            var workingTimeProcessor = processors.FirstOrDefault(p => p.Name == Systems.WorkingTime);
+            
+            if (workingTimeProcessor != null)
+            {
+                // Call the WorkingTimeProcessor to handle the check-out action
+                return await workingTimeProcessor.ProcessLineAsync(fakeEvent, chatbot.Id, "check-out", userId, replyToken, cancellationToken);
+            }
+            
+            // If we can't find the WorkingTimeProcessor, return success status without reply message
+            return new LineReplyStatus { Status = 204 }; // 204 No Content - successful but no reply
+        }
     
     private async Task<LineReplyStatus> HandleEventAction(string userId, string replyToken, CancellationToken cancellationToken)
     {

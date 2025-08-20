@@ -249,19 +249,19 @@ public class LineWebhookCommand : IRequest<LineSendResponse?>
         // ChatReport helper removed
 
         /// <summary>
-        /// Determines if a postback event represents a menu selection that should trigger cancellation
-        /// </summary>
-        /// <param name="postbackData">The postback data string</param>
-        /// <returns>True if this is a menu selection, false otherwise</returns>
-        private bool IsMenuSelection(string postbackData)
-        {
-            // Common menu selection patterns
-            return postbackData.StartsWith("menu_") ||
-                   postbackData.StartsWith("office_selected_") ||
-                   postbackData.StartsWith("current_location_selected_") ||
-                   postbackData.StartsWith("confirm_email_registration_") ||
-                   IsRichMenuSelection(postbackData);
-        }
+                /// Determines if a postback event represents a menu selection that should trigger cancellation
+                /// </summary>
+                /// <param name="postbackData">The postback data string</param>
+                /// <returns>True if this is a menu selection, false otherwise</returns>
+                private bool IsMenuSelection(string postbackData)
+                {
+                    // Common menu selection patterns
+                    // Note: office_selected_ and current_location_selected_ are excluded because they are part of the
+                    // ongoing check-in/check-out process and should not trigger cancellation
+                    return postbackData.StartsWith("menu_") ||
+                           postbackData.StartsWith("confirm_email_registration_") ||
+                           IsRichMenuSelection(postbackData);
+                }
 
         /// <summary>
         /// Determines if a postback event represents a rich menu selection
