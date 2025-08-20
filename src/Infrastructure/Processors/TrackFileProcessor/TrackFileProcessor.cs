@@ -20,7 +20,7 @@ using Pgvector.EntityFrameworkCore;
 
 namespace ChatbotApi.Infrastructure.Processors.TrackFileProcessor
 {
-    public class TrackFileProcessor : ILineMessageProcessor
+    public class TrackFileProcessor : ILineMessageProcessor, IProcessorCancellationHandler
     {
         private readonly IMemoryCache _memoryCache;
         private readonly ISystemService _systemService;
@@ -420,6 +420,28 @@ namespace ChatbotApi.Infrastructure.Processors.TrackFileProcessor
         {
             public byte[]? FileContent { get; set; }
             public string? FileExtension { get; set; }
+        }
+        
+        /// <summary>
+        /// Cancels any ongoing operations for a specific user by removing session data
+        /// </summary>
+        /// <param name="userId">The user ID for which to cancel operations</param>
+        /// <param name="cancellationToken">Cancellation token for the operation</param>
+        /// <returns>A task representing the asynchronous operation</returns>
+        public async Task CancelOperationsAsync(string userId, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                // Remove pending upload from memory cache
+                var sessionKey = SessionKeyPrefix + userId;
+                _memoryCache.Remove(sessionKey);
+                
+                _logger.LogInformation("Cancelled TrackFile operations for user {UserId}", userId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error cancelling TrackFile operations for user {UserId}", userId);
+            }
         }
     }
 }

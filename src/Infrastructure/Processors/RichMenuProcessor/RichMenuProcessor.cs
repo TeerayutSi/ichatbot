@@ -6,6 +6,7 @@ using ChatbotApi.Application.Common.Models;
 using ChatbotApi.Domain.Constants;
 using ChatbotApi.Infrastructure.BackgroundServices;
 using ChatbotApi.Infrastructure.Processors.WorkingTimeProcessor;
+using IChatBot.Infrastructure.Processors.EmailProcessors;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Caching.Memory;
@@ -67,6 +68,29 @@ public class RichMenuProcessor : ILineMessageProcessor
         
         return emailRegistrationProcessor;
     }
+    
+    /// <summary>
+    /// Cancels any previous operations by removing session data from cache
+    /// </summary>
+    /// <param name="userId">The user ID</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    private async Task CancelPreviousOperations(string userId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Cancel working time session if exists
+            await _distributedCache.RemoveAsync($"workingtime_session:{userId}", cancellationToken);
+            
+            // Cancel registration flow if exists
+            await _distributedCache.RemoveAsync($"registration_flow_{userId}", cancellationToken);
+            
+            _logger.LogInformation("Cancelled previous operations for user {UserId}", userId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error cancelling previous operations for user {UserId}", userId);
+        }
+    }
 
     public async Task<LineReplyStatus> ProcessLineAsync(LineEvent evt, int chatbotId, string message, string userId, string replyToken,
         CancellationToken cancellationToken = default)
@@ -75,6 +99,9 @@ public class RichMenuProcessor : ILineMessageProcessor
         if (evt.Type == "postback" && evt.Postback?.Data != null)
         {
             var postbackData = evt.Postback.Data;
+            
+            // Cancel any previous operations when a new menu is selected
+            await CancelPreviousOperations(userId, cancellationToken);
             
             // Handle Rich Menu actions directly without showing reply messages
             if (postbackData == "menu_register")
@@ -123,24 +150,31 @@ public class RichMenuProcessor : ILineMessageProcessor
             }
         }
         
-        // Check if message is an email address (for registration)
-        if (IsValidEmail(message))
+        // Delegate to EmailRegistrationProcessor to process the message
+        // This will handle email validation, registration flow checks, and error messaging
+        var emailEvent = new LineEvent
         {
-            // Delegate to EmailRegistrationProcessor to process the email input
-            // We need to create a minimal LineEvent for the call
-            var emailEvent = new LineEvent
+            Type = "message",
+            Message = new LineEventMessage
             {
-                Type = "message",
-                Message = new LineEventMessage
-                {
-                    Type = "text",
-                    Text = message
-                }
-            };
-            
-            // Call ProcessLineAsync instead of ProcessEmailInputAsync directly
-            var emailRegistrationProcessor = GetEmailRegistrationProcessor();
-            await emailRegistrationProcessor.ProcessLineAsync(emailEvent, 0, message, userId, "", CancellationToken.None);
+                Type = "text",
+                Text = message
+            }
+        };
+        
+        // Call ProcessLineAsync to let EmailRegistrationProcessor handle all validation and processing
+        var emailRegistrationProcessor = GetEmailRegistrationProcessor();
+        var emailResult = await emailRegistrationProcessor.ProcessLineAsync(emailEvent, 0, message, userId, replyToken, CancellationToken.None);
+        
+        // If EmailRegistrationProcessor handled the message (status != 404), return its result
+        if (emailResult.Status != 404)
+        {
+            // For email registration messages, we need to return the result with the reply message
+            // because EmailRegistrationProcessor sends push messages but might also return reply messages for errors
+            if (emailResult.ReplyMessage != null)
+            {
+                return emailResult;
+            }
             // Return success status without reply message since the processor handles messaging
             return new LineReplyStatus { Status = 204 }; // 204 No Content - successful but no reply
         }
@@ -1317,20 +1351,16 @@ public class RichMenuProcessor : ILineMessageProcessor
         _logger.LogInformation("HandleRegisterAction called for user {UserId}", userId);
         
         // Delegate to EmailRegistrationProcessor to handle the registration flow
-        // We need to create a minimal LineEvent for the call with a registration command
-        var registerEvent = new LineEvent
+        // Call HandleRegistrationMenuClickAsync directly to initiate the registration flow
+        var emailRegistrationProcessor = GetEmailRegistrationProcessor() as EmailRegistrationProcessor;
+        if (emailRegistrationProcessor != null)
         {
-            Type = "message",
-            Message = new LineEventMessage
-            {
-                Type = "text",
-                Text = "ลงทะเบียน" // Registration command in Thai
-            }
-        };
-        
-        // Call ProcessLineAsync instead of HandleRegistrationMenuClickAsync directly
-        var emailRegistrationProcessor = GetEmailRegistrationProcessor();
-        await emailRegistrationProcessor.ProcessLineAsync(registerEvent, 0, "ลงทะเบียน", userId, "", CancellationToken.None);
+            await emailRegistrationProcessor.HandleRegistrationMenuClickAsync(userId);
+        }
+        else
+        {
+            _logger.LogError("Failed to cast EmailRegistrationProcessor to the correct type");
+        }
         
         _logger.LogInformation("HandleRegisterAction completed for user {UserId}", userId);
         
@@ -1348,14 +1378,23 @@ public class RichMenuProcessor : ILineMessageProcessor
         if (string.IsNullOrWhiteSpace(email))
             return false;
             
+        // Trim the email
+        email = email.Trim();
+            
         // Check if email ends with @nti.co.th
         if (!email.EndsWith("@nti.co.th", StringComparison.OrdinalIgnoreCase))
             return false;
             
         try
         {
-            // Use simple regex to validate email format
-            var emailRegex = new System.Text.RegularExpressions.Regex(@"^[^@\s]+@[^@\s]+\.[^@\s]+$");
+            // Use more comprehensive regex to validate email format
+            // This pattern requires:
+            // - At least one character before @ (not dot or @)
+            // - @ symbol
+            // - At least one character after @ (not dot or @)
+            // - At least one dot after @
+            // - At least 2 characters after the last dot
+            var emailRegex = new System.Text.RegularExpressions.Regex(@"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$");
             return emailRegex.IsMatch(email);
         }
         catch

@@ -19,7 +19,7 @@ using ContentResult = ChatbotApi.Infrastructure.Processors.LLamaPassportProcesso
 
 namespace ChatbotApi.Infrastructure.Processors.WorkingTimeProcessor;
 
-public class WorkingTimeProcessor : ILineMessageProcessor
+public class WorkingTimeProcessor : ILineMessageProcessor, IProcessorCancellationHandler
 {
     public string Name => Systems.WorkingTime;
 
@@ -44,6 +44,29 @@ public class WorkingTimeProcessor : ILineMessageProcessor
         _cache = cache;
         _configuration = configuration;
         _systemService = systemService;
+    }
+    /// <summary>
+    /// Cancels any ongoing operations for a specific user by removing session data
+    /// </summary>
+    /// <param name="userId">The user ID for which to cancel operations</param>
+    /// <param name="cancellationToken">Cancellation token for the operation</param>
+    /// <returns>A task representing the asynchronous operation</returns>
+    public async Task CancelOperationsAsync(string userId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            // Cancel working time session if exists
+            await _cache.RemoveAsync($"workingtime_session:{userId}", cancellationToken);
+            
+            // Cancel registration flow if exists (from EmailRegistrationProcessor)
+            await _cache.RemoveAsync($"registration_flow_{userId}", cancellationToken);
+            
+            _logger.LogInformation("Cancelled previous operations for user {UserId}", userId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error cancelling previous operations for user {UserId}", userId);
+        }
     }
 
     public async Task<LineReplyStatus> ProcessLineAsync(LineEvent evt, int chatbotId, string message, string userId,
@@ -76,7 +99,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
         if (evt.Type == "postback")
         {
             var postbackData = evt.Postback?.Data ?? string.Empty;
-            
+
             // Handle email registration confirmation
             if (postbackData.StartsWith("confirm_email_registration_"))
             {
@@ -85,31 +108,31 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                 var cleanEmail = email.Trim().ToLower();
                 return await HandleEmailRegistration(cleanEmail, userId, replyToken, cancellationToken);
             }
-            
+
             // Handle menu actions
             if (postbackData == "menu_register")
             {
                 // For registration, we just show the registration message
-                return new LineReplyStatus
-                {
-                    Status = 200,
-                    ReplyMessage = new LineReplyMessage
-                    {
-                        ReplyToken = replyToken,
-                        Messages = new List<LineMessage>
-                        {
-                            new LineTextMessage("📧กรุณาลงทะเบียนผูกบัญชี Line ของคุณกับอีเมลบริษัท ด้วยการพิมพ์อีเมล xxx@nti.co.th แล้วกดส่งข้อความ")
-                        }
-                    }
-                };
+                // return new linereplystatus
+                // {
+                //     status = 200,
+                //     replymessage = new linereplymessage
+                //     {
+                //         replytoken = replytoken,
+                //         messages = new list<linemessage>
+                //         {
+                //             new linetextmessage("📧กรุณาลงทะเบียนผูกบัญชี line ของคุณกับอีเมลบริษัท ด้วยการพิมพ์อีเมล xxx@nti.co.th แล้วกดส่งข้อความ")
+                //         }
+                //     }
+                // };
             }
-            
+
             if (postbackData == "menu_checkin")
             {
                 // Handle check-in with registration check
                 return await HandleCheckInCommand(userId, replyToken, WorkingTimeType.CheckIn, accessToken, cancellationToken);
             }
-            
+
             if (postbackData == "menu_checkout")
             {
                 // Handle check-out with registration check
@@ -122,13 +145,13 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                 return await HandleAgencySelection(evt, userId, replyToken, cancellationToken);
             }
         }
-        
+
         // Check if message is an email address (for registration)
         if (IsValidEmail(message))
         {
             return await ShowEmailConfirmation(message, userId, replyToken, cancellationToken);
         }
-        
+
         // Return 404 for unrecognized messages
         return new LineReplyStatus { Status = 404 };
     }
@@ -447,10 +470,10 @@ public class WorkingTimeProcessor : ILineMessageProcessor
     {
         // Log that we're handling the check-in command
         _logger.LogInformation("Handling check-in command for user {UserId}, type {Type}", userId, type);
-        
+
         // First check if user is registered
         var isRegistered = await CheckUserRegistration(userId, cancellationToken);
-        
+
         if (!isRegistered)
         {
             // User is not registered, prompt them to register with company email
@@ -467,7 +490,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                 }
             };
         }
-        
+
         // Create new session
         var session = new WorkingTimeSession
         {
@@ -486,9 +509,9 @@ public class WorkingTimeProcessor : ILineMessageProcessor
 
         // Create FLEX message with location request button
         var flexMessage = CreateLocationRequestFlexMessage(greeting, type);
-        
+
         _logger.LogInformation("Created flex message for user {UserId}: {FlexMessage}", userId, flexMessage);
-        
+
         return new LineReplyStatus
         {
             Status = 201, // Special status for FLEX messages
@@ -523,7 +546,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
 
         // Parse postback data to get selected office
         var postbackData = evt.Postback?.Data ?? string.Empty;
-        
+
         // Parse the place ID from postback data (format: "office_selected_{placeId}")
         string selectedOfficePlaceId = "";
         if (postbackData.StartsWith("office_selected_"))
@@ -624,7 +647,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
     private async Task<List<GovernmentOffice>> FindNearbyOffices(double latitude, double longitude, CancellationToken cancellationToken)
     {
         var offices = new List<GovernmentOffice>();
-    
+
         // Get API key from configuration
         var apiKey = _configuration["WorkingTime:GoogleApiKey"];
         if (string.IsNullOrEmpty(apiKey))
@@ -632,27 +655,27 @@ public class WorkingTimeProcessor : ILineMessageProcessor
             _logger.LogError("Google API key not configured");
             return offices;
         }
-    
+
         // Get search radius from configuration, default to 500 meters
         var radius = _configuration.GetValue<int>("WorkingTime:SearchRadius", 500);
-    
+
         // Types of places to search for
         var placeTypes = new[] { "government_office", "school", "university", "company" };
-    
+
         foreach (var type in placeTypes)
         {
             var url = $"https://maps.googleapis.com/maps/api/place/nearbysearch/json?location={latitude},{longitude}&radius={radius}&type={type}&key={apiKey}";
-    
+
             try
             {
                 var httpClient = _httpClientFactory.CreateClient("resilient_nocompress");
                 var response = await httpClient.GetAsync(url, cancellationToken);
-    
+
                 if (response.IsSuccessStatusCode)
                 {
                     var content = await response.Content.ReadAsStringAsync(cancellationToken);
                     var placesResponse = JsonSerializer.Deserialize<GooglePlacesResponse>(content);
-    
+
                     if (placesResponse?.Results != null)
                     {
                         foreach (var result in placesResponse.Results)
@@ -682,14 +705,14 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                 _logger.LogError(ex, "Error calling Google Places API for type: {Type}", type);
             }
         }
-    
+
         // Sort offices by distance from the current location (nearest first)
         return offices
             .OrderBy(o => CalculateDistance(latitude, longitude, o.Latitude, o.Longitude))
             .Take(10)
             .ToList(); // Limit to 10 results for FLEX message
     }
-    
+
     /// <summary>
     /// Calculates the distance between two points using the Haversine formula
     /// </summary>
@@ -711,7 +734,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
         var d = R * c;
         return d;
     }
-    
+
     /// <summary>
     /// Converts degrees to radians
     /// </summary>
@@ -726,7 +749,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
     {
         // Create a simple FLEX message with a carousel of offices
         var contents = new List<object>();
-        
+
         foreach (var office in offices)
         {
             contents.Add(new
@@ -922,10 +945,10 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                     session.PhotoContent.Length, compressedPhoto.Length);
             }
         }
-        
+
         // Convert photo to base64
         var base64Photo = photoBytes != null ? Convert.ToBase64String(photoBytes) : string.Empty;
-        
+
         // Determine file extension for the photo
         var fileExtension = "jpg";
         if (!string.IsNullOrEmpty(session.PhotoContentType))
@@ -939,7 +962,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                 _ => "jpg"
             };
         }
-        
+
         // Create file name with timestamp
         var fileName = $"checkin_checkout_{DateTime.UtcNow:yyyyMMddHHmmss}.{fileExtension}";
 
@@ -960,7 +983,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
         {
             var httpClient = _httpClientFactory.CreateClient("resilient_nocompress");
             httpClient.DefaultRequestHeaders.Add("accept", "application/json");
-            
+
             // Add Bearer token authentication
             var bearerToken = _configuration["WorkingTime:HrSystemBearerToken"];
             if (!string.IsNullOrEmpty(bearerToken))
@@ -1004,11 +1027,11 @@ public class WorkingTimeProcessor : ILineMessageProcessor
     {
         if (string.IsNullOrWhiteSpace(email))
             return false;
-            
+
         // Check if email ends with @nti.co.th
         if (!email.EndsWith("@nti.co.th", StringComparison.OrdinalIgnoreCase))
             return false;
-            
+
         try
         {
             // Use simple regex to validate email format
@@ -1020,7 +1043,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
             return false;
         }
     }
-    
+
     /// <summary>
     /// Shows a confirmation flex message for email registration
     /// </summary>
@@ -1033,7 +1056,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
     {
         // Clean email: trim whitespace and convert to lowercase
         var cleanEmail = email.Trim().ToLower();
-        
+
         // Create a flex message with confirmation button
         var flexMessage = new
         {
@@ -1104,7 +1127,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
             })
         };
     }
-    
+
     /// <summary>
     /// Handles the email registration process
     /// </summary>
@@ -1120,7 +1143,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
             // Get the SSO API URL and token from configuration
             var baseUrl = _configuration["WorkingTime:SSOApiUrl"];
             var apiToken = _configuration["WorkingTime:SSOApiUrlToken"];
-            
+
             if (string.IsNullOrEmpty(baseUrl) || string.IsNullOrEmpty(apiToken))
             {
                 _logger.LogError("SSO API configuration is missing");
@@ -1137,44 +1160,44 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                     }
                 };
             }
-            
+
             // Get the base API URL and construct the RegisterLinebotUserId endpoint
             var registerUrl = $"{baseUrl.TrimEnd('/')}/RegisterLinebotUserId";
-            
+
             // Clean email: trim whitespace and convert to lowercase
             var cleanEmail = email.Trim().ToLower();
-            
+
             // Prepare the request data
             var requestData = new
             {
                 LinebotUserId = lineUserId,
                 Email = cleanEmail
             };
-            
+
             // Create JSON content
             var jsonContent = JsonSerializer.Serialize(requestData);
             var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
-            
+
             // Create HTTP client
             var httpClient = _httpClientFactory.CreateClient("resilient_nocompress");
-            
+
             // Create request message
             var request = new HttpRequestMessage(HttpMethod.Post, registerUrl)
             {
                 Content = content
             };
-            
+
             // Add headers
             request.Headers.Add("Authorization", apiToken);
-            
+
             // Make POST request to register the user
             var response = await httpClient.SendAsync(request, cancellationToken);
-            
+
             if (response.IsSuccessStatusCode)
             {
                 // Registration successful
                 _logger.LogInformation("User {UserId} successfully registered with email {Email}", lineUserId, email);
-                
+
                 // Now proceed with the check-in/check-out flow
                 var session = new WorkingTimeSession
                 {
@@ -1183,17 +1206,17 @@ public class WorkingTimeProcessor : ILineMessageProcessor
                     Step = WorkingTimeStep.WaitingForLocation,
                     CreatedAt = DateTime.UtcNow
                 };
-                
+
                 // Save session to cache
                 await _cache.SetObjectAsync($"workingtime_session:{lineUserId}", session, 30, false);
-                
+
                 // Get user's display name
                 string? displayName = await GetLineProfileName(lineUserId, "", cancellationToken);
                 string greeting = !string.IsNullOrEmpty(displayName) ? $"😀สวัสดีคุณ {displayName} " : "";
-                
+
                 // Create FLEX message with location request button
                 var flexMessage = CreateLocationRequestFlexMessage(greeting, WorkingTimeType.CheckIn);
-                
+
                 return new LineReplyStatus
                 {
                     Status = 201, // Special status for FLEX messages
@@ -1203,9 +1226,9 @@ public class WorkingTimeProcessor : ILineMessageProcessor
             else
             {
                 // Registration failed
-                _logger.LogError("Failed to register user {UserId} with email {Email}. Status: {StatusCode}", 
+                _logger.LogError("Failed to register user {UserId} with email {Email}. Status: {StatusCode}",
                     lineUserId, email, response.StatusCode);
-                    
+
                 return new LineReplyStatus
                 {
                     Status = 200,
@@ -1251,7 +1274,7 @@ public class WorkingTimeProcessor : ILineMessageProcessor
             // Get API URL and token from configuration
             var baseUrl = _configuration["WorkingTime:SSOApiUrl"];
             var apiToken = _configuration["WorkingTime:SSOApiUrlToken"];
-            
+
             if (string.IsNullOrEmpty(baseUrl) || string.IsNullOrEmpty(apiToken))
             {
                 _logger.LogError("SSO API configuration is missing");
@@ -1261,19 +1284,19 @@ public class WorkingTimeProcessor : ILineMessageProcessor
             // Construct the full URL with the line user ID
             var registerUrl = $"{baseUrl.TrimEnd('/')}/GetUserid";
             var url = $"{registerUrl}?LineUserId={lineUserId}";
-            
+
             // Create HTTP client
             var httpClient = _httpClientFactory.CreateClient("resilient_nocompress");
-            
+
             // Add authorization header
             httpClient.DefaultRequestHeaders.Add("Authorization", apiToken);
-            
+
             // Make the request
             var response = await httpClient.GetAsync(url, cancellationToken);
-            
+
             // Log the response for debugging
             _logger.LogInformation("SSO API response status: {StatusCode} for user {UserId}", response.StatusCode, lineUserId);
-            
+
             // Return true if we get a 200 OK response, false for 404 or any other status
             return response.IsSuccessStatusCode;
         }
@@ -1362,4 +1385,5 @@ public class WorkingTimeProcessor : ILineMessageProcessor
     }
 
     #endregion
+
 }

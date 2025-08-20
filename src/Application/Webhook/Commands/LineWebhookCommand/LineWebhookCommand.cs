@@ -248,10 +248,131 @@ public class LineWebhookCommand : IRequest<LineSendResponse?>
 
         // ChatReport helper removed
 
+        /// <summary>
+        /// Determines if a postback event represents a menu selection that should trigger cancellation
+        /// </summary>
+        /// <param name="postbackData">The postback data string</param>
+        /// <returns>True if this is a menu selection, false otherwise</returns>
+        private bool IsMenuSelection(string postbackData)
+        {
+            // Common menu selection patterns
+            return postbackData.StartsWith("menu_") ||
+                   postbackData.StartsWith("office_selected_") ||
+                   postbackData.StartsWith("current_location_selected_") ||
+                   postbackData.StartsWith("confirm_email_registration_") ||
+                   IsRichMenuSelection(postbackData);
+        }
+
+        /// <summary>
+        /// Determines if a postback event represents a rich menu selection
+        /// </summary>
+        /// <param name="postbackData">The postback data string</param>
+        /// <returns>True if this is a rich menu selection, false otherwise</returns>
+        private bool IsRichMenuSelection(string postbackData)
+        {
+            // Rich menu selections might have specific patterns
+            // This could be based on configuration or known prefixes
+            return postbackData.Contains("richmenu") ||
+                   postbackData.Contains("main_menu") ||
+                   postbackData.Contains("submenu");
+        }
+
+        /// <summary>
+        /// Cancels previous operations for a user across all processors that implement IProcessorCancellationHandler
+        /// </summary>
+        /// <param name="userId">The user ID for which to cancel operations</param>
+        /// <param name="cancellationToken">Cancellation token for the operation</param>
+        private async Task CancelPreviousOperationsForUser(string userId, CancellationToken cancellationToken)
+        {
+            _logger.LogInformation("Cancelling previous operations for user {UserId}", userId);
+            
+            // Track cancellation results for logging and monitoring
+            var cancellationResults = new List<(string processorName, bool success, Exception? exception)>();
+            
+            // Run cancellations in parallel for better performance
+            var cancellationTasks = new List<Task>();
+            
+            foreach (var processor in _messageProcessors)
+            {
+                if (processor is IProcessorCancellationHandler cancellationHandler)
+                {
+                    var task = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await cancellationHandler.CancelOperationsAsync(userId, cancellationToken);
+                            cancellationResults.Add((processor.Name, true, null));
+                            _logger.LogDebug("Successfully cancelled operations for processor {ProcessorName} and user {UserId}",
+                                processor.Name, userId);
+                        }
+                        catch (Exception ex)
+                        {
+                            cancellationResults.Add((processor.Name, false, ex));
+                            _logger.LogError(ex, "Error cancelling operations for processor {ProcessorName} and user {UserId}",
+                                processor.Name, userId);
+                        }
+                    }, cancellationToken);
+                    
+                    cancellationTasks.Add(task);
+                }
+            }
+            
+            // Wait for all cancellations to complete
+            if (cancellationTasks.Any())
+            {
+                try
+                {
+                    await Task.WhenAll(cancellationTasks);
+                    _logger.LogInformation("Completed cancellation for user {UserId} across {ProcessorCount} processors",
+                        userId, cancellationTasks.Count);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error waiting for cancellation tasks to complete for user {UserId}", userId);
+                }
+            }
+            else
+            {
+                _logger.LogDebug("No processors with cancellation handlers found for user {UserId}", userId);
+            }
+            
+            // Log summary of cancellation results
+            LogCancellationSummary(userId, cancellationResults);
+        }
+
+        /// <summary>
+        /// Logs a summary of cancellation results for monitoring and debugging
+        /// </summary>
+        /// <param name="userId">The user ID for which operations were cancelled</param>
+        /// <param name="results">The results of the cancellation operations</param>
+        private void LogCancellationSummary(string userId, List<(string processorName, bool success, Exception? exception)> results)
+        {
+            var successfulCancellations = results.Count(r => r.success);
+            var failedCancellations = results.Count(r => !r.success);
+            
+            _logger.LogInformation("Cancellation summary for user {UserId}: {Successful} successful, {Failed} failed",
+                userId, successfulCancellations, failedCancellations);
+            
+            if (failedCancellations > 0)
+            {
+                var failedProcessors = results.Where(r => !r.success).Select(r => r.processorName);
+                _logger.LogWarning("Failed cancellations for user {UserId} in processors: {FailedProcessors}",
+                    userId, string.Join(", ", failedProcessors));
+            }
+        }
+
         private async Task<LineReplyStatus?> ProcessPostbackEvent(Event evt, Chatbot chatbot, List<string> plugins,
             string userId, string replyToken, CancellationToken cancellationToken)
         {
             string messageText = evt.Postback?.Data ?? string.Empty;
+            
+            // Check if this is a menu selection that should trigger cancellation
+            if (IsMenuSelection(messageText))
+            {
+                _logger.LogInformation("Menu selection detected for user {UserId}, triggering cancellation", userId);
+                await CancelPreviousOperationsForUser(userId, cancellationToken);
+            }
+            
             LineReplyStatus? toReturn = null;
             if (chatbot.LineChannelAccessToken != null)
             {

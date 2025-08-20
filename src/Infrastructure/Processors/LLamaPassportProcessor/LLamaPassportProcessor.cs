@@ -17,7 +17,7 @@ using LineReplyMessage = ChatbotApi.Application.Common.Models.LineReplyMessage;
 
 namespace ChatbotApi.Infrastructure.Processors.LLamaPassportProcessor;
 
-public class LLamaPassportProcessor : ILineMessageProcessor
+public class LLamaPassportProcessor : ILineMessageProcessor, IProcessorCancellationHandler
 {
     public string Name => Systems.LlamaPassport;
 
@@ -678,5 +678,29 @@ public class LLamaPassportProcessor : ILineMessageProcessor
         formattedMessage.AppendLine(
             "กรุณาส่งข้อมูลที่อยู่และหมายเลขโทรศัพท์ก่อนบันทึกข้อมูลใน Google Sheet, หากต้องการบันทึกข้อมูลทันทีพิมพ์ \"บันทึก\"");
         return new LineTextMessage() { Text = formattedMessage.ToString() };
+    }
+    
+    /// <summary>
+    /// Cancels any ongoing operations for a specific user by removing session data
+    /// </summary>
+    /// <param name="userId">The user ID for which to cancel operations</param>
+    /// <param name="cancellationToken">Cancellation token for the operation</param>
+    /// <returns>A task representing the asynchronous operation</returns>
+    public async Task CancelOperationsAsync(string userId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            // Remove passport result from cache
+            await _cache.RemoveAsync($"passport_result:{userId}", cancellationToken);
+            
+            // Remove passport state from cache
+            await _cache.RemoveAsync($"passport_state:{userId}", cancellationToken);
+            
+            _logger.LogInformation("Cancelled LLamaPassport operations for user {UserId}", userId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error cancelling LLamaPassport operations for user {UserId}", userId);
+        }
     }
 }

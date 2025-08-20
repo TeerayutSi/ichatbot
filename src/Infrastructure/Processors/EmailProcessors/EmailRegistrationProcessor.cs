@@ -7,11 +7,13 @@ using System.Linq;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Caching.Distributed;
 using ChatbotApi.Application.Common.Models;
 using ChatbotApi.Application.Common.Interfaces;
 using ChatbotApi.Domain.Entities;
 using ChatbotApi.Domain.Constants;
+using System.Threading;
+using ChatbotApi.Application.Common.Extensions;
 
 // Enum for email validation results
 public enum EmailValidationResult
@@ -32,7 +34,7 @@ namespace IChatBot.Infrastructure.Processors.EmailProcessors
         private readonly ILogger<EmailRegistrationProcessor> _logger;
         private readonly ILineMessenger _lineMessenger;
         private readonly IApplicationDbContext _context;
-        private readonly IMemoryCache _cache;
+        private readonly IDistributedCache _cache;
         
         public EmailRegistrationProcessor(
             IConfiguration configuration,
@@ -40,7 +42,7 @@ namespace IChatBot.Infrastructure.Processors.EmailProcessors
             ILogger<EmailRegistrationProcessor> logger,
             ILineMessenger lineMessenger,
             IApplicationDbContext context,
-            IMemoryCache cache)
+            IDistributedCache cache)
         {
             _configuration = configuration;
             _httpClientFactory = httpClientFactory;
@@ -57,7 +59,11 @@ namespace IChatBot.Infrastructure.Processors.EmailProcessors
             
             // Set user in registration flow state
             var cacheKey = $"registration_flow_{lineUserId}";
-            _cache.Set(cacheKey, true, TimeSpan.FromMinutes(10)); // Expire after 10 minutes
+            var options = new DistributedCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10)
+            };
+            await _cache.SetAsync(cacheKey, BitConverter.GetBytes(true), options);
             
             // Show message asking user to type their email for registration
             await ShowEmailInputMessageAsync(lineUserId);
@@ -76,45 +82,59 @@ namespace IChatBot.Infrastructure.Processors.EmailProcessors
         // Method to process user's email input
         public async Task ProcessEmailInputAsync(string lineUserId, string email)
         {
+            _logger.LogInformation("ProcessEmailInputAsync called for user: {UserId} with email: {Email}", lineUserId, email);
+            
             // Check if email is valid
             var validationResult = ValidateEmail(email);
+            _logger.LogInformation("Email validation result in ProcessEmailInputAsync for user {UserId}: {ValidationResult}", lineUserId, validationResult);
+            
             if (validationResult != EmailValidationResult.Valid)
             {
                 if (validationResult == EmailValidationResult.NotCompanyEmail)
                 {
+                    _logger.LogInformation("Showing non-company email message for user: {UserId}", lineUserId);
                     await ShowNonCompanyEmailMessageAsync(lineUserId);
                 }
                 else
                 {
+                    _logger.LogInformation("Showing invalid email message for user: {UserId}", lineUserId);
                     await ShowInvalidEmailMessageAsync(lineUserId);
                 }
                 return;
             }
             
+            _logger.LogInformation("Email is valid for user: {UserId}, checking registration status", lineUserId);
+            
             // Check registration status via API
             var isAlreadyRegistered = await CheckRegistrationStatusAsync(lineUserId);
+            _logger.LogInformation("Registration status for user {UserId}: {IsAlreadyRegistered}", lineUserId, isAlreadyRegistered);
             
             if (isAlreadyRegistered)
             {
+                _logger.LogInformation("User {UserId} is already registered, showing already registered message", lineUserId);
                 // 3.1. If found (already registered): Show "อีเมลนี้เคยลงทะเบียนในระบบแล้ว"
                 await ShowAlreadyRegisteredMessageAsync(lineUserId);
                 // End registration flow
-                EndRegistrationFlow(lineUserId);
+                await EndRegistrationFlow(lineUserId);
             }
             else
             {
+                _logger.LogInformation("User {UserId} is not registered, attempting to register", lineUserId);
                 // 3.2. If not registered: Call API with email and line userid to register
                 var registrationResult = await RegisterUserAsync(email, lineUserId);
+                _logger.LogInformation("Registration result for user {UserId}: {RegistrationResult}", lineUserId, registrationResult);
                 
                 if (registrationResult)
                 {
+                    _logger.LogInformation("Registration successful for user: {UserId}", lineUserId);
                     // Show success message
                     await ShowRegistrationSuccessMessageAsync(lineUserId);
                     // End registration flow
-                    EndRegistrationFlow(lineUserId);
+                    await EndRegistrationFlow(lineUserId);
                 }
                 else
                 {
+                    _logger.LogInformation("Registration failed for user: {UserId}", lineUserId);
                     // Show registration failed message
                     await ShowRegistrationFailedMessageAsync(lineUserId);
                 }
@@ -122,17 +142,20 @@ namespace IChatBot.Infrastructure.Processors.EmailProcessors
         }
         
         // Method to end registration flow
-        private void EndRegistrationFlow(string lineUserId)
+        private async Task EndRegistrationFlow(string lineUserId)
         {
             var cacheKey = $"registration_flow_{lineUserId}";
-            _cache.Remove(cacheKey);
+            await _cache.RemoveAsync(cacheKey);
         }
         
         // Method to check if user is in registration flow
-        private bool IsInRegistrationFlow(string lineUserId)
+        private async Task<bool> IsInRegistrationFlow(string lineUserId)
         {
             var cacheKey = $"registration_flow_{lineUserId}";
-            return _cache.TryGetValue(cacheKey, out bool inFlow) && inFlow;
+            var cachedValue = await _cache.GetAsync(cacheKey);
+            var isInFlow = cachedValue != null && BitConverter.ToBoolean(cachedValue, 0);
+            _logger.LogInformation("IsInRegistrationFlow for user {UserId}: {IsInFlow}", lineUserId, isInFlow);
+            return isInFlow;
         }
         
         // Method to check registration status via API
@@ -290,19 +313,46 @@ namespace IChatBot.Infrastructure.Processors.EmailProcessors
         {
             try
             {
-                // Use simple regex to validate email format first
-                var emailRegex = new System.Text.RegularExpressions.Regex(@"^[^@\s]+@[^@\s]+\.[^@\s]+$");
-                if (!emailRegex.IsMatch(email))
+                // Log the email being validated
+                _logger.LogInformation("Validating email: {Email}", email);
+                
+                // Check for null or empty email
+                if (string.IsNullOrWhiteSpace(email))
+                {
+                    _logger.LogInformation("Email validation failed: Email is null or whitespace");
                     return EmailValidationResult.InvalidFormat;
+                }
+                
+                // Trim the email
+                email = email.Trim();
+                
+                // Use more comprehensive regex to validate email format
+                // This pattern requires:
+                // - At least one character before @ (not dot or @)
+                // - @ symbol
+                // - At least one character after @ (not dot or @)
+                // - At least one dot after @
+                // - At least 2 characters after the last dot
+                var emailRegex = new System.Text.RegularExpressions.Regex(@"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$");
+                if (!emailRegex.IsMatch(email))
+                {
+                    _logger.LogInformation("Email validation failed: Format is invalid - {Email}", email);
+                    return EmailValidationResult.InvalidFormat;
+                }
                 
                 // Check if email ends with @nti.co.th
                 if (!email.EndsWith("@nti.co.th", StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogInformation("Email validation failed: Not a company email - {Email}", email);
                     return EmailValidationResult.NotCompanyEmail;
+                }
                 
+                _logger.LogInformation("Email validation passed: {Email}", email);
                 return EmailValidationResult.Valid;
             }
-            catch
+            catch (Exception ex)
             {
+                _logger.LogError(ex, "Error during email validation for email: {Email}", email);
                 return EmailValidationResult.InvalidFormat;
             }
         }
@@ -358,37 +408,53 @@ namespace IChatBot.Infrastructure.Processors.EmailProcessors
         public async Task<LineReplyStatus> ProcessLineAsync(LineEvent evt, int chatbotId, string message, string userId,
             string replyToken, CancellationToken cancellationToken = default)
         {
+            _logger.LogInformation("ProcessLineAsync called with message: {Message} from user: {UserId}", message, userId);
+            
             // Check if message is a registration command
             if (IsRegistrationCommand(message))
             {
+                _logger.LogInformation("Processing registration command for user: {UserId}", userId);
                 // Handle registration command by showing email input message
                 await HandleRegistrationMenuClickAsync(userId);
                 return new LineReplyStatus { Status = 200 };
             }
             
             // Only process email messages if user is in registration flow
-            if (IsInRegistrationFlow(userId))
+            var isInRegistrationFlow = await IsInRegistrationFlow(userId);
+            _logger.LogInformation("User {UserId} is in registration flow: {IsInRegistrationFlow}", userId, isInRegistrationFlow);
+            
+            if (isInRegistrationFlow)
             {
+                _logger.LogInformation("Processing email input for user: {UserId} with message: {Message}", userId, message);
                 // Check if message is an email address for registration
                 var validationResult = ValidateEmail(message);
+                _logger.LogInformation("Email validation result for user {UserId}: {ValidationResult}", userId, validationResult);
+                
                 if (validationResult == EmailValidationResult.Valid)
                 {
+                    _logger.LogInformation("Processing valid email for user: {UserId}", userId);
                     // Process the email registration
                     await ProcessEmailInputAsync(userId, message);
                     return new LineReplyStatus { Status = 200 };
                 }
                 else if (validationResult == EmailValidationResult.NotCompanyEmail)
                 {
+                    _logger.LogInformation("Showing non-company email message for user: {UserId}", userId);
                     // Show error for non-company email
                     await ShowNonCompanyEmailMessageAsync(userId);
                     return new LineReplyStatus { Status = 200 };
                 }
                 else if (validationResult == EmailValidationResult.InvalidFormat)
                 {
+                    _logger.LogInformation("Showing invalid email message for user: {UserId}", userId);
                     // Show error for invalid format
                     await ShowInvalidEmailMessageAsync(userId);
                     return new LineReplyStatus { Status = 200 };
                 }
+            }
+            else
+            {
+                _logger.LogInformation("User {UserId} is not in registration flow, returning 404", userId);
             }
             
             // Return 404 for unrecognized messages or when not in registration flow

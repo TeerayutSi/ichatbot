@@ -125,7 +125,7 @@ public static class DependencyInjection
                         serviceProvider
                     ));
             }
-            // Special handling for EmailRegistrationProcessor to provide IMemoryCache
+            // Special handling for EmailRegistrationProcessor to provide IDistributedCache
             else if (type == typeof(IChatBot.Infrastructure.Processors.EmailProcessors.EmailRegistrationProcessor))
             {
                 services.AddScoped(typeof(ILineMessageProcessor),
@@ -135,7 +135,7 @@ public static class DependencyInjection
                         serviceProvider.GetRequiredService<ILogger<IChatBot.Infrastructure.Processors.EmailProcessors.EmailRegistrationProcessor>>(),
                         serviceProvider.GetRequiredService<ILineMessenger>(),
                         serviceProvider.GetRequiredService<IApplicationDbContext>(),
-                        serviceProvider.GetRequiredService<IMemoryCache>()
+                        serviceProvider.GetRequiredService<IDistributedCache>()
                     ));
             }
             else
