@@ -573,18 +573,13 @@ public class WorkingTimeProcessor : ILineMessageProcessor, IProcessorCancellatio
         // Save updated session
         await _cache.SetObjectAsync($"workingtime_session:{userId}", session, 30, false);
 
-        // Request selfie photo from user
+        // Request selfie photo from user with Flex message containing camera button
+        var flexMessage = CreatePhotoRequestFlexMessage();
+        
         return new LineReplyStatus
         {
-            Status = 200,
-            ReplyMessage = new LineReplyMessage
-            {
-                ReplyToken = replyToken,
-                Messages = new List<LineMessage>
-                {
-                    new LineTextMessage("📷ถ่ายรูปเซลฟี่เพื่อยืนยันตัวตน")
-                }
-            }
+            Status = 201, // Special status for FLEX messages
+            Raw = flexMessage
         };
     }
 
@@ -921,6 +916,64 @@ public class WorkingTimeProcessor : ILineMessageProcessor, IProcessorCancellatio
         return json;
     }
 
+    private string CreatePhotoRequestFlexMessage()
+    {
+        // Create a Flex message with a camera button
+        var flexMessage = new
+        {
+            type = "bubble",
+            body = new
+            {
+                type = "box",
+                layout = "vertical",
+                contents = new object[]
+                {
+                    new
+                    {
+                        type = "text",
+                        text = "📷ถ่ายรูปเซลฟี่เพื่อยืนยันตัวตน",
+                        wrap = true,
+                        size = "md",
+                        color = "#333333"
+                    }
+                },
+                spacing = "md",
+                paddingAll = "20px"
+            },
+            footer = new
+            {
+                type = "box",
+                layout = "vertical",
+                spacing = "sm",
+                contents = new object[]
+                {
+                    new
+                    {
+                        type = "button",
+                        style = "primary",
+                        color = "#1DB446",
+                        action = new
+                        {
+                            type = "uri",
+                            label = "ถ่ายภาพ",
+                            uri = "line://nv/camera/"
+                        }
+                    }
+                }
+            }
+        };
+
+        var json = JsonSerializer.Serialize(flexMessage, new JsonSerializerOptions
+        {
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            WriteIndented = false
+        });
+
+        // Log the JSON for debugging
+        _logger.LogInformation("Generated photo request flex message JSON: {Json}", json);
+
+        return json;
+    }
 
     private async Task<bool> SubmitToHrSystem(WorkingTimeSession session, string userId, CancellationToken cancellationToken)
     {
