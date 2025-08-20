@@ -8,7 +8,7 @@ EXPOSE 443
 FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /solution
 COPY . .
-RUN bash versionUpdate.sh
+#RUN bash versionUpdate.sh
 WORKDIR /solution/src/Web
 RUN dotnet restore "Web.csproj" -v=q
 ARG TARGETARCH
