@@ -968,7 +968,7 @@ public class RichMenuProcessor : ILineMessageProcessor
                             Type = "uri",
                             DisplayText = "help",
                             Label = "Help",
-                            Uri = "https://www.nti.co.th/devsupport/TAutoBot"
+                            Uri = _configuration.GetValue<string>("LineRichMenu:HelpUrl", "https://www.nti.co.th/devsupport/TAutoBot")
                         }
                     }
                 }
@@ -1331,32 +1331,8 @@ public class RichMenuProcessor : ILineMessageProcessor
     {
         _logger.LogInformation("Processing help action for user {UserId}", userId);
         
-        // Create URI action to open help URL directly
-        var template = new
-        {
-            type = "template",
-            altText = "Help",
-            template = new
-            {
-                type = "buttons",
-                text = "กำลังเปิดหน้าช่วยเหลือ...",
-                actions = new[]
-                {
-                    new
-                    {
-                        type = "uri",
-                        label = "เปิดลิงก์ช่วยเหลือ",
-                        uri = "https://www.nti.co.th/devsupport/TAutoBot"
-                    }
-                }
-            }
-        };
-        
-        var json = JsonSerializer.Serialize(template, new JsonSerializerOptions
-        {
-            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-            WriteIndented = false
-        });
+        // Create a flex message with a button that opens the help URL
+        var json = CreateHelpFlexMessage();
         
         return new LineReplyStatus
         {
@@ -1369,32 +1345,8 @@ public class RichMenuProcessor : ILineMessageProcessor
     {
         _logger.LogInformation("Processing help message for user {UserId}", userId);
         
-        // Create URI action to open help URL directly
-        var template = new
-        {
-            type = "template",
-            altText = "Help",
-            template = new
-            {
-                type = "buttons",
-                text = "กำลังเปิดหน้าช่วยเหลือ...",
-                actions = new[]
-                {
-                    new
-                    {
-                        type = "uri",
-                        label = "เปิดลิงก์ช่วยเหลือ",
-                        uri = "https://www.nti.co.th/devsupport/TAutoBot"
-                    }
-                }
-            }
-        };
-        
-        var json = JsonSerializer.Serialize(template, new JsonSerializerOptions
-        {
-            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-            WriteIndented = false
-        });
+        // Create a flex message with a button that opens the help URL
+        var json = CreateHelpFlexMessage();
         
         return new LineReplyStatus
         {
@@ -1406,43 +1358,44 @@ public class RichMenuProcessor : ILineMessageProcessor
     private string CreateHelpFlexMessage()
     {
         // Create a flex message with a button that opens the help URL
-        var json = @"{
+        var helpUrl = _configuration.GetValue<string>("LineRichMenu:HelpUrl", "https://www.nti.co.th/devsupport/TAutoBot");
+        var json = $@"{{
   ""type"": ""bubble"",
-  ""body"": {
+  ""body"": {{
     ""type"": ""box"",
     ""layout"": ""vertical"",
     ""contents"": [
-      {
+      {{
         ""type"": ""text"",
         ""text"": ""Help & Support"",
         ""weight"": ""bold"",
         ""size"": ""xl"",
         ""align"": ""center""
-      },
-      {
+      }},
+      {{
         ""type"": ""text"",
         ""text"": ""คุณต้องการความช่วยเหลือหรือไม่?"",
         ""wrap"": true,
         ""margin"": ""md""
-      }
+      }}
     ]
-  },
-  ""footer"": {
+  }},
+  ""footer"": {{
     ""type"": ""box"",
     ""layout"": ""vertical"",
     ""contents"": [
-      {
+      {{
         ""type"": ""button"",
-        ""action"": {
+        ""action"": {{
           ""type"": ""uri"",
           ""label"": ""เปิดลิงก์ช่วยเหลือ"",
-          ""uri"": ""https://www.nti.co.th/devsupport/TAutoBot""
-        },
+          ""uri"": ""{helpUrl}""
+        }},
         ""style"": ""primary""
-      }
+      }}
     ]
-  }
-}";
+  }}
+}}";
         return json;
     }
     
